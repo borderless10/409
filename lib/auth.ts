@@ -1,31 +1,48 @@
-"use client"
-
-import type { User } from "./types"
-import { mockUsers } from "./mock-data"
-
-const CURRENT_USER_KEY = "evcharge_current_user"
-
-export function login(email: string, password: string): User | null {
-  // Mock authentication - in production, this would call an API
-  const user = mockUsers.find((u) => u.email === email)
-  if (user && password === "password") {
-    localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(user))
-    return user
-  }
-  return null
+type User = {
+  name: string
+  email: string
+  role?: "user" | "admin"
 }
 
-export function logout(): void {
-  localStorage.removeItem(CURRENT_USER_KEY)
+const STORAGE_KEY = "auth:user"
+
+export function login(email: string, password: string): boolean {
+  if (password !== "password") return false
+
+  const user: User = {
+    name: "Usuário",
+    email,
+    role: email.includes("admin") ? "admin" : "user",
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+  return true
+}
+
+export function register(name: string, email: string, password: string): boolean {
+  const user: User = {
+    name,
+    email,
+    role: email.includes("admin") ? "admin" : "user",
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(user))
+  return true
+}
+
+export function logout() {
+  localStorage.removeItem(STORAGE_KEY)
 }
 
 export function getCurrentUser(): User | null {
   if (typeof window === "undefined") return null
-  const userStr = localStorage.getItem(CURRENT_USER_KEY)
-  return userStr ? JSON.parse(userStr) : null
-}
 
-export function isAdmin(): boolean {
-  const user = getCurrentUser()
-  return user?.role === "admin"
+  const data = localStorage.getItem(STORAGE_KEY)
+  if (!data) return null
+
+  try {
+    return JSON.parse(data) as User
+  } catch {
+    return null
+  }
 }
