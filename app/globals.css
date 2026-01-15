@@ -125,3 +125,41 @@
     @apply bg-background text-foreground;
   }
 }
+.station-marker {
+  transform: translate(-50%, -100%);
+  pointer-events: auto;
+}
+
+.station-marker .marker-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: marker-pop 0.25s ease-out;
+}
+
+.station-marker svg {
+  stroke: white;
+  stroke-width: 1.6px;
+  filter:
+    drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.station-marker:hover svg {
+  transform: scale(1.18);
+  filter:
+    drop-shadow(0 6px 10px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 3px 6px rgba(0, 0, 0, 0.45));
+}
+
+@keyframes marker-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
