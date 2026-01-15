@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
+import "leaflet/dist/leaflet.css"
 import { Providers } from "@/components/providers"
 
 const geist = Geist({ subsets: ["latin"] })
@@ -12,11 +13,7 @@ export const metadata: Metadata = {
   description: "Sistema completo de gerenciamento de estações de recarga",
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
       <body className={`${geist.className} ${geistMono.className}`}>
