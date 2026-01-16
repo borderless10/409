@@ -71,20 +71,31 @@ export default function HomeContent() {
             <Zap className="h-6 w-6 text-primary" />
             <h1 className="text-xl font-semibold">EV Charge</h1>
           </div>
+
           <div className="flex items-center gap-2">
             {user.role === "admin" && (
-              <Link href="/admin">
-                <Button variant="outline" size="sm">
-                  Admin
-                </Button>
-              </Link>
+              <>
+                <Link href="/admin">
+                  <Button variant="outline" size="sm">
+                    Admin
+                  </Button>
+                </Link>
+
+                <Link href="/admin/expenses">
+                  <Button variant="outline" size="sm">
+                    Financeiro
+                  </Button>
+                </Link>
+              </>
             )}
+
             <Link href="/bookings">
               <Button variant="outline" size="sm">
                 <User className="mr-2 h-4 w-4" />
                 Minhas Reservas
               </Button>
             </Link>
+
             <Button variant="ghost" size="sm" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
             </Button>
@@ -95,7 +106,9 @@ export default function HomeContent() {
       <main className="container mx-auto px-4 py-6">
         <div className="mb-6 space-y-2">
           <h2 className="text-3xl font-bold">Encontre Estações de Recarga</h2>
-          <p className="text-muted-foreground">Localize a estação mais próxima e reserve seu horário</p>
+          <p className="text-muted-foreground">
+            Localize a estação mais próxima e reserve seu horário
+          </p>
         </div>
 
         <div className="mb-6">
@@ -135,23 +148,30 @@ export default function HomeContent() {
             <div className="lg:col-span-2">
               <StationMap stations={filteredStations} onStationSelect={setSelectedStation} />
             </div>
+
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">{filteredStations.length} estações encontradas</h3>
+              <h3 className="text-lg font-semibold">
+                {filteredStations.length} estações encontradas
+              </h3>
+
               <div className="space-y-3">
                 {filteredStations.slice(0, 5).map((station) => (
                   <Card
                     key={station.id}
-                    className={`cursor-pointer transition-all hover:shadow-md ${selectedStation?.id === station.id ? "border-primary ring-2 ring-primary" : ""}`}
+                    className={`cursor-pointer transition-all hover:shadow-md ${
+                      selectedStation?.id === station.id
+                        ? "border-primary ring-2 ring-primary"
+                        : ""
+                    }`}
                     onClick={() => setSelectedStation(station)}
                   >
                     <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <CardTitle className="text-base">{station.name}</CardTitle>
-                          <CardDescription className="text-xs">{station.address}</CardDescription>
-                        </div>
-                      </div>
+                      <CardTitle className="text-base">{station.name}</CardTitle>
+                      <CardDescription className="text-xs">
+                        {station.address}
+                      </CardDescription>
                     </CardHeader>
+
                     <CardContent className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Disponível</span>
@@ -159,10 +179,14 @@ export default function HomeContent() {
                           {station.available_chargers}/{station.total_chargers}
                         </span>
                       </div>
+
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Preço</span>
-                        <span className="font-medium">R$ {station.price_per_kwh.toFixed(2)}/kWh</span>
+                        <span className="font-medium">
+                          R$ {station.price_per_kwh.toFixed(2)}/kWh
+                        </span>
                       </div>
+
                       <Link href={`/stations/${station.id}`}>
                         <Button size="sm" className="mt-2 w-full">
                           Reservar
@@ -177,11 +201,12 @@ export default function HomeContent() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredStations.map((station) => (
-              <Card key={station.id} className="hover:shadow-md transition-shadow">
+              <Card key={station.id} className="transition-shadow hover:shadow-md">
                 <CardHeader>
                   <CardTitle className="text-lg">{station.name}</CardTitle>
                   <CardDescription>{station.address}</CardDescription>
                 </CardHeader>
+
                 <CardContent className="space-y-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Carregadores</span>
@@ -189,14 +214,19 @@ export default function HomeContent() {
                       {station.available_chargers}/{station.total_chargers} disponíveis
                     </span>
                   </div>
+
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Potência</span>
                     <span className="font-medium">{station.power_output}</span>
                   </div>
+
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Preço</span>
-                    <span className="font-medium">R$ {station.price_per_kwh.toFixed(2)}/kWh</span>
+                    <span className="font-medium">
+                      R$ {station.price_per_kwh.toFixed(2)}/kWh
+                    </span>
                   </div>
+
                   <div className="flex flex-wrap gap-1">
                     {station.connector_types.map((type) => (
                       <Badge key={type} variant="outline" className="text-xs">
@@ -204,6 +234,7 @@ export default function HomeContent() {
                       </Badge>
                     ))}
                   </div>
+
                   {station.amenities.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-1">
                       {station.amenities.slice(0, 3).map((amenity) => (
@@ -213,6 +244,7 @@ export default function HomeContent() {
                       ))}
                     </div>
                   )}
+
                   <Link href={`/stations/${station.id}`}>
                     <Button size="sm" className="mt-2 w-full">
                       Ver Detalhes
