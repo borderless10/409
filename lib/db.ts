@@ -33,7 +33,10 @@ export function initializeDatabase() {
   }
 }
 
+// =====================
 // Stations
+// =====================
+
 export function getStations(): Station[] {
   if (typeof window === "undefined") return []
   const data = localStorage.getItem(DB_KEYS.STATIONS)
@@ -45,29 +48,55 @@ export function getStation(id: string): Station | null {
   return stations.find((s) => s.id === id) || null
 }
 
-export function updateStation(station: Station): void {
+export function createStation(
+  station: Omit<Station, "id" | "created_at" | "updated_at">
+): Station {
   const stations = getStations()
-  const index = stations.findIndex((s) => s.id === station.id)
-  if (index !== -1) {
-    stations[index] = { ...station, updated_at: new Date().toISOString() }
-    localStorage.setItem(DB_KEYS.STATIONS, JSON.stringify(stations))
-  }
-}
 
-export function createStation(station: Omit<Station, "id" | "created_at" | "updated_at">): Station {
-  const stations = getStations()
   const newStation: Station = {
     ...station,
     id: `station-${Date.now()}`,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }
+
   stations.push(newStation)
   localStorage.setItem(DB_KEYS.STATIONS, JSON.stringify(stations))
+
   return newStation
 }
 
+export function updateStation(station: Station): void {
+  const stations = getStations()
+  const index = stations.findIndex((s) => s.id === station.id)
+
+  if (index !== -1) {
+    stations[index] = {
+      ...station,
+      updated_at: new Date().toISOString(),
+    }
+
+    localStorage.setItem(DB_KEYS.STATIONS, JSON.stringify(stations))
+  }
+}
+
+/**
+ * ✅ DELETE REAL DE POSTO
+ */
+export function deleteStation(id: string): void {
+  const stations = getStations()
+  const updatedStations = stations.filter((s) => s.id !== id)
+
+  localStorage.setItem(
+    DB_KEYS.STATIONS,
+    JSON.stringify(updatedStations)
+  )
+}
+
+// =====================
 // Bookings
+// =====================
+
 export function getBookings(): Booking[] {
   if (typeof window === "undefined") return []
   const data = localStorage.getItem(DB_KEYS.BOOKINGS)
@@ -78,28 +107,37 @@ export function getUserBookings(userId: string): Booking[] {
   return getBookings().filter((b) => b.user_id === userId)
 }
 
-export function createBooking(booking: Omit<Booking, "id" | "created_at">): Booking {
+export function createBooking(
+  booking: Omit<Booking, "id" | "created_at">
+): Booking {
   const bookings = getBookings()
+
   const newBooking: Booking = {
     ...booking,
     id: `booking-${Date.now()}`,
     created_at: new Date().toISOString(),
   }
+
   bookings.push(newBooking)
   localStorage.setItem(DB_KEYS.BOOKINGS, JSON.stringify(bookings))
+
   return newBooking
 }
 
 export function updateBooking(booking: Booking): void {
   const bookings = getBookings()
   const index = bookings.findIndex((b) => b.id === booking.id)
+
   if (index !== -1) {
     bookings[index] = booking
     localStorage.setItem(DB_KEYS.BOOKINGS, JSON.stringify(bookings))
   }
 }
 
+// =====================
 // Chargers
+// =====================
+
 export function getChargers(): Charger[] {
   if (typeof window === "undefined") return []
   const data = localStorage.getItem(DB_KEYS.CHARGERS)

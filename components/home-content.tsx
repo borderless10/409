@@ -86,6 +86,12 @@ export default function HomeContent() {
                     Financeiro
                   </Button>
                 </Link>
+
+                <Link href="/admin/stations-maneger">
+                  <Button variant="outline" size="sm">
+                    Postos
+                  </Button>
+                </Link>
               </>
             )}
 

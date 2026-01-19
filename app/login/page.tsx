@@ -73,7 +73,10 @@ export default function LoginPage() {
 
             <div className="space-y-2">
               <Label>Email</Label>
-              <Input value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
 
             <div className="space-y-2">
@@ -104,6 +107,14 @@ export default function LoginPage() {
               onClick={() => quickLogin("joao@email.com")}
             >
               Demo Usuário
+            </Button>
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => quickLogin("admin@email.com")}
+            >
+              Demo Administrador
             </Button>
           </div>
         </CardContent>

@@ -69,7 +69,7 @@ export default function NewStation() {
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="container mx-auto px-4 py-4">
-          <Link href="/admin">
+          <Link href="/admin/stations-maneger/">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Voltar
@@ -106,34 +106,6 @@ export default function NewStation() {
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                   placeholder="Ex: Av. Example, 1234 - São Paulo, SP"
                 />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="latitude">Latitude</Label>
-                  <Input
-                    id="latitude"
-                    type="number"
-                    step="any"
-                    required
-                    value={formData.latitude}
-                    onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
-                    placeholder="-23.5505"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="longitude">Longitude</Label>
-                  <Input
-                    id="longitude"
-                    type="number"
-                    step="any"
-                    required
-                    value={formData.longitude}
-                    onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
-                    placeholder="-46.6333"
-                  />
-                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
