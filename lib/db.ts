@@ -3,7 +3,10 @@
 import type { Station, Charger, Booking } from "./types"
 import { mockStations, mockChargers, mockBookings } from "./mock-data"
 
-// Mock database using localStorage
+// =====================
+// Mock database (localStorage)
+// =====================
+
 const DB_KEYS = {
   STATIONS: "evcharge_stations",
   CHARGERS: "evcharge_chargers",
@@ -12,22 +15,38 @@ const DB_KEYS = {
   PAYMENTS: "evcharge_payments",
 }
 
-// Initialize mock data
+// =====================
+// Initialize database
+// =====================
+
 export function initializeDatabase() {
   if (typeof window === "undefined") return
 
   if (!localStorage.getItem(DB_KEYS.STATIONS)) {
-    localStorage.setItem(DB_KEYS.STATIONS, JSON.stringify(mockStations))
+    localStorage.setItem(
+      DB_KEYS.STATIONS,
+      JSON.stringify(mockStations)
+    )
   }
+
   if (!localStorage.getItem(DB_KEYS.CHARGERS)) {
-    localStorage.setItem(DB_KEYS.CHARGERS, JSON.stringify(mockChargers))
+    localStorage.setItem(
+      DB_KEYS.CHARGERS,
+      JSON.stringify(mockChargers)
+    )
   }
+
   if (!localStorage.getItem(DB_KEYS.BOOKINGS)) {
-    localStorage.setItem(DB_KEYS.BOOKINGS, JSON.stringify(mockBookings))
+    localStorage.setItem(
+      DB_KEYS.BOOKINGS,
+      JSON.stringify(mockBookings)
+    )
   }
+
   if (!localStorage.getItem(DB_KEYS.SESSIONS)) {
     localStorage.setItem(DB_KEYS.SESSIONS, JSON.stringify([]))
   }
+
   if (!localStorage.getItem(DB_KEYS.PAYMENTS)) {
     localStorage.setItem(DB_KEYS.PAYMENTS, JSON.stringify([]))
   }
@@ -48,6 +67,13 @@ export function getStation(id: string): Station | null {
   return stations.find((s) => s.id === id) || null
 }
 
+/**
+ * Alias semântico (facilita leitura no admin)
+ */
+export function getStationById(id: string): Station | null {
+  return getStation(id)
+}
+
 export function createStation(
   station: Omit<Station, "id" | "created_at" | "updated_at">
 ): Station {
@@ -61,23 +87,46 @@ export function createStation(
   }
 
   stations.push(newStation)
-  localStorage.setItem(DB_KEYS.STATIONS, JSON.stringify(stations))
+
+  localStorage.setItem(
+    DB_KEYS.STATIONS,
+    JSON.stringify(stations)
+  )
 
   return newStation
 }
 
-export function updateStation(station: Station): void {
+/**
+ * ✅ UPDATE REAL (PATCH-like)
+ * Usado pela página de edição
+ */
+export function updateStationById(
+  id: string,
+  data: Partial<Station>
+): void {
   const stations = getStations()
-  const index = stations.findIndex((s) => s.id === station.id)
+  const index = stations.findIndex((s) => s.id === id)
 
-  if (index !== -1) {
-    stations[index] = {
-      ...station,
-      updated_at: new Date().toISOString(),
-    }
+  if (index === -1) return
 
-    localStorage.setItem(DB_KEYS.STATIONS, JSON.stringify(stations))
+  stations[index] = {
+    ...stations[index],
+    ...data,
+    id, // garante que o ID não seja alterado
+    updated_at: new Date().toISOString(),
   }
+
+  localStorage.setItem(
+    DB_KEYS.STATIONS,
+    JSON.stringify(stations)
+  )
+}
+
+/**
+ * 🔁 Mantido por compatibilidade
+ */
+export function updateStation(station: Station): void {
+  updateStationById(station.id, station)
 }
 
 /**
@@ -85,7 +134,9 @@ export function updateStation(station: Station): void {
  */
 export function deleteStation(id: string): void {
   const stations = getStations()
-  const updatedStations = stations.filter((s) => s.id !== id)
+  const updatedStations = stations.filter(
+    (s) => s.id !== id
+  )
 
   localStorage.setItem(
     DB_KEYS.STATIONS,
@@ -103,8 +154,12 @@ export function getBookings(): Booking[] {
   return data ? JSON.parse(data) : []
 }
 
-export function getUserBookings(userId: string): Booking[] {
-  return getBookings().filter((b) => b.user_id === userId)
+export function getUserBookings(
+  userId: string
+): Booking[] {
+  return getBookings().filter(
+    (b) => b.user_id === userId
+  )
 }
 
 export function createBooking(
@@ -119,18 +174,27 @@ export function createBooking(
   }
 
   bookings.push(newBooking)
-  localStorage.setItem(DB_KEYS.BOOKINGS, JSON.stringify(bookings))
+
+  localStorage.setItem(
+    DB_KEYS.BOOKINGS,
+    JSON.stringify(bookings)
+  )
 
   return newBooking
 }
 
 export function updateBooking(booking: Booking): void {
   const bookings = getBookings()
-  const index = bookings.findIndex((b) => b.id === booking.id)
+  const index = bookings.findIndex(
+    (b) => b.id === booking.id
+  )
 
   if (index !== -1) {
     bookings[index] = booking
-    localStorage.setItem(DB_KEYS.BOOKINGS, JSON.stringify(bookings))
+    localStorage.setItem(
+      DB_KEYS.BOOKINGS,
+      JSON.stringify(bookings)
+    )
   }
 }
 
@@ -144,6 +208,10 @@ export function getChargers(): Charger[] {
   return data ? JSON.parse(data) : []
 }
 
-export function getStationChargers(stationId: string): Charger[] {
-  return getChargers().filter((c) => c.station_id === stationId)
+export function getStationChargers(
+  stationId: string
+): Charger[] {
+  return getChargers().filter(
+    (c) => c.station_id === stationId
+  )
 }

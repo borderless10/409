@@ -89,7 +89,7 @@ export default function HomeContent() {
 
                 <Link href="/admin/stations-maneger">
                   <Button variant="outline" size="sm">
-                    Postos
+                    Estações
                   </Button>
                 </Link>
               </>
