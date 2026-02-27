@@ -8,9 +8,10 @@ import type { Station } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { MapPin, Zap, DollarSign, Clock } from "lucide-react"
+import { MapPin, Zap, DollarSign, Clock, Activity } from "lucide-react"
 import Link from "next/link"
 import { SiteHeader } from "@/components/site-header"
+import { formatAmperageRange, formatPowerRange } from "@/lib/utils"
 
 export default function StationDetailsPage() {
   const router = useRouter()
@@ -55,7 +56,7 @@ export default function StationDetailsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader variant="back" />
-      <main className="flex-1 container mx-auto max-w-4xl px-4 py-6">
+      <main className="flex-1 container mx-auto max-w-5xl px-4 py-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold">{station.name}</h1>
           <p className="flex items-center gap-2 text-muted-foreground mt-2">
@@ -79,21 +80,33 @@ export default function StationDetailsPage() {
             subtitle="por kWh"
           />
 
-          <InfoCard
-            icon={<Clock className="h-4 w-4" />}
-            title="Potência"
-            value={station.power_output ?? "—"}
-            subtitle="de saída"
-          />
+          {(station.total_chargers ?? 0) >= 1 && (
+            <InfoCard
+              icon={<Clock className="h-4 w-4" />}
+              title="Potência"
+              value={formatPowerRange(station)}
+              subtitle="de saída"
+            />
+          )}
+
+          {(station.total_chargers ?? 0) >= 1 &&
+            (station.min_current_a != null || station.max_current_a != null) && (
+              <InfoCard
+                icon={<Activity className="h-4 w-4" />}
+                title="Amperagem"
+                value={formatAmperageRange(station)}
+                subtitle="intervalo na estação"
+              />
+            )}
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Tipos de Conectores</CardTitle>
-              <CardDescription>Disponíveis nesta estação</CardDescription>
+              <CardTitle className="text-lg md:text-xl">Tipos de Conectores</CardTitle>
+              <CardDescription className="text-sm md:text-base">Disponíveis nesta estação</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
+            <CardContent className="flex flex-wrap gap-3">
               {(station.connector_types ?? []).map((type) => (
                 <Badge key={type} variant="secondary">
                   {type}
@@ -104,10 +117,10 @@ export default function StationDetailsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Comodidades</CardTitle>
-              <CardDescription>Serviços disponíveis</CardDescription>
+              <CardTitle className="text-lg md:text-xl">Comodidades</CardTitle>
+              <CardDescription className="text-sm md:text-base">Serviços disponíveis</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
+            <CardContent className="flex flex-wrap gap-3">
               {(station.amenities ?? []).map((amenity) => (
                 <Badge key={amenity} variant="outline">
                   {amenity}
@@ -119,8 +132,8 @@ export default function StationDetailsPage() {
 
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle>Reserve seu Horário</CardTitle>
-            <CardDescription>Garanta seu carregador</CardDescription>
+            <CardTitle className="text-lg md:text-xl">Reserve seu Horário</CardTitle>
+            <CardDescription className="text-sm md:text-base">Garanta seu carregador</CardDescription>
           </CardHeader>
           <CardContent>
             <Link href={`/stations/${station.id}/book`}>
@@ -157,8 +170,8 @@ function InfoCard({
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <div className="text-2xl md:text-3xl font-bold">{value}</div>
+        <p className="text-sm md:text-base text-muted-foreground">{subtitle}</p>
       </CardContent>
     </Card>
   )

@@ -4,10 +4,12 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import type { Station } from "@/lib/types"
 import { updateStationById } from "@/lib/firestore"
+import { geocodeAddress } from "@/lib/geocode"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { MapPin, Loader2 } from "lucide-react"
 
 interface StationFormProps {
   station?: Station
@@ -27,9 +29,35 @@ export default function StationForm({ station }: StationFormProps) {
     total_chargers: station?.total_chargers ?? 1,
     available_chargers: station?.available_chargers ?? 1,
     price_per_kwh: station?.price_per_kwh ?? 0.5,
-    power_output: station?.power_output ?? "22kW",
     status: station?.status ?? "active",
   })
+  const [geocoding, setGeocoding] = useState(false)
+  const [geoError, setGeoError] = useState<string | null>(null)
+
+  async function handleGeocode() {
+    setGeoError(null)
+    if (!form.address?.trim()) {
+      setGeoError("Preencha o endereço antes de buscar.")
+      return
+    }
+    setGeocoding(true)
+    try {
+      const result = await geocodeAddress(
+        form.address.trim(),
+        form.city.trim(),
+        form.state.trim()
+      )
+      if (result) {
+        setForm((prev) => ({ ...prev, latitude: result.lat, longitude: result.lon }))
+      } else {
+        setGeoError("Endereço não encontrado. Ajuste o texto ou informe latitude/longitude manualmente.")
+      }
+    } catch {
+      setGeoError("Erro ao buscar coordenadas. Tente informar latitude e longitude manualmente.")
+    } finally {
+      setGeocoding(false)
+    }
+  }
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -105,6 +133,59 @@ export default function StationForm({ station }: StationFormProps) {
               onChange={handleChange}
               required
             />
+          </div>
+
+          <div className="md:col-span-2 space-y-3 rounded-lg border p-4">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 text-muted-foreground" />
+              <Label className="text-base">Localização no mapa</Label>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Defina as coordenadas para o marcador: use &quot;Buscar pelo endereço&quot; ou informe latitude e longitude manualmente.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleGeocode}
+                disabled={geocoding}
+              >
+                {geocoding ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="ml-2">Buscando...</span>
+                  </>
+                ) : (
+                  "Buscar pelo endereço"
+                )}
+              </Button>
+            </div>
+            {geoError && (
+              <p className="text-sm text-destructive">{geoError}</p>
+            )}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Latitude</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  name="latitude"
+                  value={form.latitude}
+                  onChange={handleChange}
+                />
+              </div>
+              <div>
+                <Label>Longitude</Label>
+                <Input
+                  type="number"
+                  step="any"
+                  name="longitude"
+                  value={form.longitude}
+                  onChange={handleChange}
+                />
+              </div>
+            </div>
           </div>
 
           <div>

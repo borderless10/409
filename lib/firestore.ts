@@ -69,15 +69,34 @@ function serializeStation(data: DocumentData, id: string): Station {
   }
 }
 
+function parsePowerOutputToKw(powerOutput: string): number | undefined {
+  const match = String(powerOutput).match(/^(\d+(?:[.,]\d+)?)\s*kw/i)
+  if (!match) return undefined
+  return Number.parseFloat(match[1].replace(",", "."))
+}
+
 function serializeCharger(data: DocumentData, id: string): Charger {
   const c = data as Record<string, unknown>
+  const powerKw = typeof c.power_kw === "number" ? c.power_kw : undefined
+  const currentA = typeof c.current_a === "number" ? c.current_a : undefined
+  const voltageV = typeof c.voltage_v === "number" ? c.voltage_v : undefined
+  const powerOutputRaw = String(c.power_output ?? "")
+  const powerOutput =
+    powerOutputRaw ||
+    (typeof powerKw === "number" && !Number.isNaN(powerKw) ? `${powerKw} kW` : "")
+  const derivedPowerKw =
+    powerKw ??
+    (powerOutputRaw ? parsePowerOutputToKw(powerOutputRaw) : undefined)
   return {
     id,
     station_id: String(c.station_id ?? ""),
     charger_number: String(c.charger_number ?? ""),
     status: (c.status as Charger["status"]) ?? "available",
     connector_type: String(c.connector_type ?? ""),
-    power_output: String(c.power_output ?? ""),
+    power_output: powerOutput,
+    ...(typeof derivedPowerKw === "number" && { power_kw: derivedPowerKw }),
+    ...(typeof currentA === "number" && { current_a: currentA }),
+    ...(typeof voltageV === "number" && { voltage_v: voltageV }),
     ...(c.current_session_id && { current_session_id: String(c.current_session_id) }),
     ...(typeof c.price_per_kwh === "number" && { price_per_kwh: c.price_per_kwh }),
     ...(c.model && { model: String(c.model) }),
@@ -189,17 +208,43 @@ export function getStationById(id: string): Promise<Station | null> {
   return getStation(id)
 }
 
+function stationCurrentRange(chargers: Charger[]): { min_current_a?: number; max_current_a?: number } {
+  const currents = chargers
+    .map((c) => c.current_a)
+    .filter((a): a is number => typeof a === "number" && !Number.isNaN(a))
+  if (!currents.length) return {}
+  return {
+    min_current_a: Math.min(...currents),
+    max_current_a: Math.max(...currents),
+  }
+}
+
+function stationPowerRange(chargers: Charger[]): { min_power_kw?: number; max_power_kw?: number } {
+  const kws = chargers
+    .map((c) => c.power_kw)
+    .filter((k): k is number => typeof k === "number" && !Number.isNaN(k))
+  if (!kws.length) return {}
+  return {
+    min_power_kw: Math.min(...kws),
+    max_power_kw: Math.max(...kws),
+  }
+}
+
 /** Estação com total_chargers e available_chargers derivados dos carregadores */
 export async function getStationWithCounts(id: string): Promise<Station | null> {
   const station = await getStation(id)
   if (!station) return null
   const chargers = await getStationChargers(id)
+  const range = stationCurrentRange(chargers)
+  const powerRange = stationPowerRange(chargers)
   return {
     ...station,
     total_chargers: chargers.length,
     available_chargers: chargers.filter((c) => c.status === "available").length,
     connector_types: [...new Set(chargers.map((c) => c.connector_type))],
     power_output: chargers[0]?.power_output ?? station.power_output ?? "",
+    ...range,
+    ...powerRange,
   }
 }
 
@@ -209,12 +254,16 @@ export async function getStationsWithCounts(): Promise<Station[]> {
   const result: Station[] = []
   for (const s of stations) {
     const chargers = await getStationChargers(s.id)
+    const range = stationCurrentRange(chargers)
+    const powerRange = stationPowerRange(chargers)
     result.push({
       ...s,
       total_chargers: chargers.length,
       available_chargers: chargers.filter((c) => c.status === "available").length,
       connector_types: [...new Set(chargers.map((c) => c.connector_type))],
       power_output: chargers[0]?.power_output ?? s.power_output ?? "",
+      ...range,
+      ...powerRange,
     })
   }
   return result
@@ -258,6 +307,10 @@ export async function updateStationById(id: string, data: Partial<Station>): Pro
   delete payload.available_chargers
   delete payload.connector_types
   delete payload.power_output
+  delete payload.min_current_a
+  delete payload.max_current_a
+  delete payload.min_power_kw
+  delete payload.max_power_kw
   await updateDoc(ref, payload)
 }
 
@@ -265,8 +318,21 @@ export async function updateStation(station: Station): Promise<void> {
   return updateStationById(station.id, station)
 }
 
+export async function deleteCharger(id: string): Promise<void> {
+  await deleteDoc(doc(getDb(), COLLECTIONS.CHARGERS, id))
+}
+
 export async function deleteStation(id: string): Promise<void> {
   await deleteDoc(doc(getDb(), COLLECTIONS.STATIONS, id))
+}
+
+/** Remove a estação e todos os carregadores vinculados. */
+export async function deleteStationWithChargers(stationId: string): Promise<void> {
+  const chargers = await getStationChargers(stationId)
+  for (const c of chargers) {
+    await deleteCharger(c.id)
+  }
+  await deleteStation(stationId)
 }
 
 // -----------------------------
@@ -293,16 +359,38 @@ export async function getStationChargers(stationId: string): Promise<Charger[]> 
   return snap.docs.map((d) => serializeCharger(d.data(), d.id))
 }
 
+function nextChargerNumberForStation(existingChargers: Charger[]): string {
+  if (!existingChargers.length) return "1"
+  const numbers = existingChargers
+    .map((c) => Number.parseInt(String(c.charger_number).replace(/^0+/, ""), 10) || 0)
+    .filter((n) => Number.isInteger(n) && n >= 0)
+  return numbers.length ? String(Math.max(...numbers) + 1) : "1"
+}
+
 export async function createCharger(
   charger: Omit<Charger, "id">
 ): Promise<Charger> {
+  let chargerNumber = charger.charger_number?.trim()
+  if (!chargerNumber) {
+    const existing = await getStationChargers(charger.station_id)
+    chargerNumber = nextChargerNumberForStation(existing)
+  }
+  const powerKw = typeof charger.power_kw === "number" ? charger.power_kw : undefined
+  const currentA = typeof charger.current_a === "number" ? charger.current_a : undefined
+  const voltageV = typeof charger.voltage_v === "number" ? charger.voltage_v : undefined
+  const powerOutput =
+    charger.power_output?.trim() ||
+    (typeof powerKw === "number" ? `${powerKw} kW` : "")
   const payload: DocumentData = {
     station_id: charger.station_id,
-    charger_number: charger.charger_number,
+    charger_number: chargerNumber,
     status: charger.status,
     connector_type: charger.connector_type,
-    power_output: charger.power_output,
+    power_output: powerOutput || "—",
   }
+  if (typeof powerKw === "number") payload.power_kw = powerKw
+  if (typeof currentA === "number") payload.current_a = currentA
+  if (typeof voltageV === "number") payload.voltage_v = voltageV
   if (charger.current_session_id) payload.current_session_id = charger.current_session_id
   if (typeof charger.price_per_kwh === "number") payload.price_per_kwh = charger.price_per_kwh
   if (charger.model) payload.model = charger.model
@@ -328,7 +416,22 @@ export async function getBookings(): Promise<Booking[]> {
   const snap = await getDocs(
     query(collection(getDb(), COLLECTIONS.BOOKINGS), orderBy("created_at", "desc"))
   )
-  return snap.docs.map((d) => serializeBooking(d.data(), d.id))
+  const now = Date.now()
+  const bookings = snap.docs.map((d) => serializeBooking(d.data(), d.id))
+
+  const updates: Promise<void>[] = []
+  for (const booking of bookings) {
+    const end = new Date(booking.end_time).getTime()
+    if (booking.status === "active" && !Number.isNaN(end) && end <= now) {
+      booking.status = "completed"
+      const ref = doc(getDb(), COLLECTIONS.BOOKINGS, booking.id)
+      updates.push(updateDoc(ref, { status: "completed" }))
+    }
+  }
+  if (updates.length > 0) {
+    await Promise.all(updates)
+  }
+  return bookings
 }
 
 export async function getUserBookings(userId: string): Promise<Booking[]> {
@@ -338,7 +441,22 @@ export async function getUserBookings(userId: string): Promise<Booking[]> {
     orderBy("created_at", "desc")
   )
   const snap = await getDocs(q)
-  return snap.docs.map((d) => serializeBooking(d.data(), d.id))
+  const now = Date.now()
+  const bookings = snap.docs.map((d) => serializeBooking(d.data(), d.id))
+
+  const updates: Promise<void>[] = []
+  for (const booking of bookings) {
+    const end = new Date(booking.end_time).getTime()
+    if (booking.status === "active" && !Number.isNaN(end) && end <= now) {
+      booking.status = "completed"
+      const ref = doc(getDb(), COLLECTIONS.BOOKINGS, booking.id)
+      updates.push(updateDoc(ref, { status: "completed" }))
+    }
+  }
+  if (updates.length > 0) {
+    await Promise.all(updates)
+  }
+  return bookings
 }
 
 export async function getBookingsByCharger(chargerId: string): Promise<Booking[]> {

@@ -3,16 +3,17 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { getStationWithCounts, getStationChargers, createBooking } from "@/lib/firestore"
+import { getStationWithCounts, getStationChargers, getBookingsByCharger, createBooking } from "@/lib/firestore"
 import { getCurrentUser, isAuthReady } from "@/lib/auth-firebase"
-import type { Station } from "@/lib/types"
+import type { Station, Charger } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Calendar, Clock } from "lucide-react"
+import { Calendar, Clock, AlertTriangle } from "lucide-react"
 import Link from "next/link"
 import { SiteHeader } from "@/components/site-header"
+import { formatAmperageRange, formatPowerRange } from "@/lib/utils"
 
 export default function BookStation() {
   const router = useRouter()
@@ -20,12 +21,15 @@ export default function BookStation() {
   const stationId = params?.id as string
 
   const [station, setStation] = useState<Station | null>(null)
+  const [chargers, setChargers] = useState<Charger[]>([])
+  const [selectedChargerId, setSelectedChargerId] = useState<string | null>(null)
   const [selectedDate, setSelectedDate] = useState("")
   const [selectedTime, setSelectedTime] = useState("")
   const [duration, setDuration] = useState("1")
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [conflictPeriods, setConflictPeriods] = useState<Array<{ start_time: string; end_time: string }>>([])
 
   useEffect(() => {
     if (!isAuthReady()) return
@@ -35,8 +39,14 @@ export default function BookStation() {
       return
     }
     if (!stationId) return
-    getStationWithCounts(stationId).then((data) => {
+    Promise.all([
+      getStationWithCounts(stationId),
+      getStationChargers(stationId),
+    ]).then(([data, stationChargers]) => {
       setStation(data ?? null)
+      setChargers(stationChargers)
+      const available = stationChargers.find((c) => c.status === "available")
+      setSelectedChargerId(available?.id ?? stationChargers[0]?.id ?? null)
       setLoading(false)
       const today = new Date().toISOString().split("T")[0]
       setSelectedDate(today)
@@ -46,6 +56,36 @@ export default function BookStation() {
     })
   }, [stationId, router])
 
+  useEffect(() => {
+    if (!selectedChargerId || !selectedDate || !selectedTime || !duration) {
+      setConflictPeriods([])
+      return
+    }
+    const startTime = new Date(`${selectedDate}T${selectedTime}:00`)
+    if (Number.isNaN(startTime.getTime())) {
+      setConflictPeriods([])
+      return
+    }
+    const durationHours = Number.parseInt(duration, 10) || 1
+    const endTime = new Date(startTime.getTime() + durationHours * 60 * 60 * 1000)
+    let cancelled = false
+    getBookingsByCharger(selectedChargerId).then((bookings) => {
+      if (cancelled) return
+      const start = startTime.getTime()
+      const end = endTime.getTime()
+      const overlapping = bookings
+        .filter((b) => b.status !== "cancelled")
+        .filter((b) => {
+          const bStart = new Date(b.start_time).getTime()
+          const bEnd = new Date(b.end_time).getTime()
+          return start < bEnd && end > bStart
+        })
+        .map((b) => ({ start_time: b.start_time, end_time: b.end_time }))
+      setConflictPeriods(overlapping)
+    })
+    return () => { cancelled = true }
+  }, [selectedChargerId, selectedDate, selectedTime, duration])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!station) return
@@ -54,23 +94,28 @@ export default function BookStation() {
       router.push("/login")
       return
     }
+    if (!selectedChargerId) {
+      setError("Selecione um carregador para continuar.")
+      return
+    }
+    const selectedCharger = chargers.find((c) => c.id === selectedChargerId)
+    if (selectedCharger?.status !== "available") {
+      setError("O carregador selecionado não está disponível. Escolha outro.")
+      return
+    }
+    if (conflictPeriods.length > 0) {
+      setError("Este horário conflita com outra reserva neste carregador. Escolha outra data ou horário.")
+      return
+    }
     setError("")
     setSubmitting(true)
     try {
-      const chargers = await getStationChargers(station.id)
-      const available = chargers.find((c) => c.status === "available")
-      const chargerId = available?.id ?? chargers[0]?.id
-      if (!chargerId) {
-        setError("Nenhum carregador disponível nesta estação.")
-        setSubmitting(false)
-        return
-      }
       const startTime = new Date(`${selectedDate}T${selectedTime}:00`)
       const endTime = new Date(startTime.getTime() + Number.parseInt(duration) * 60 * 60 * 1000)
       const booking = await createBooking({
         user_id: user.id,
         station_id: station.id,
-        charger_id: chargerId,
+        charger_id: selectedChargerId,
         start_time: startTime.toISOString(),
         end_time: endTime.toISOString(),
         status: "pending",
@@ -112,8 +157,8 @@ export default function BookStation() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader variant="back" backHref={`/stations/${station.id}`} />
-      <main className="flex-1 container mx-auto max-w-2xl px-4 py-6">
+      <SiteHeader variant="back" backHref={`/stations/${station.id}`} backReplace />
+      <main className="flex-1 container mx-auto max-w-4xl px-4 py-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold">Fazer Reserva</h1>
           <p className="text-muted-foreground mt-1">{station.name}</p>
@@ -122,29 +167,79 @@ export default function BookStation() {
         <div className="grid gap-6">
           <Card>
             <CardHeader>
-              <CardTitle>Detalhes da Estação</CardTitle>
+              <CardTitle className="text-lg md:text-xl">Detalhes da Estação</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between text-sm">
+            <CardContent className="space-y-3">
+              <div className="flex justify-between text-sm md:text-base">
                 <span className="text-muted-foreground">Endereço</span>
                 <span className="font-medium text-right">{station.address}</span>
               </div>
-              <div className="flex justify-between text-sm">
+              <div className="flex justify-between text-sm md:text-base">
                 <span className="text-muted-foreground">Carregadores Disponíveis</span>
                 <span className="font-medium">
                   {station.available_chargers ?? 0}/{station.total_chargers ?? 0}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Potência</span>
-                <span className="font-medium">{station.power_output ?? "—"}</span>
-              </div>
+              {(station.total_chargers ?? 0) >= 1 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Potência</span>
+                  <span className="font-medium">{formatPowerRange(station)}</span>
+                </div>
+              )}
+              {(station.total_chargers ?? 0) >= 1 &&
+                formatAmperageRange(station) !== "—" && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Amperagem</span>
+                    <span className="font-medium">{formatAmperageRange(station)}</span>
+                  </div>
+                )}
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Preço</span>
                 <span className="font-medium">R$ {station.price_per_kwh.toFixed(2)}/kWh</span>
               </div>
             </CardContent>
           </Card>
+
+          {chargers.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Escolha o carregador</CardTitle>
+                <CardDescription>Selecione qual carregador deseja utilizar</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {chargers.map((c) => {
+                    const available = c.status === "available"
+                    const selected = selectedChargerId === c.id
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={!available}
+                        onClick={() => available && setSelectedChargerId(c.id)}
+                        className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
+                          selected
+                            ? "border-primary bg-primary/10"
+                            : available
+                              ? "hover:bg-muted/50"
+                              : "cursor-not-allowed opacity-60"
+                        }`}
+                      >
+                        <div>
+                          <span className="font-medium">Carregador {c.charger_number}</span>
+                          <span className="ml-2 text-sm text-muted-foreground">{c.connector_type}</span>
+                          <span className="ml-2 text-sm text-muted-foreground">{c.power_output}</span>
+                        </div>
+                        <span className={`text-xs font-medium ${available ? "text-green-600" : "text-muted-foreground"}`}>
+                          {available ? "Disponível" : c.status === "occupied" ? "Ocupado" : c.status === "reserved" ? "Reservado" : "Manutenção"}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
@@ -221,8 +316,27 @@ export default function BookStation() {
                   </p>
                 </div>
 
+                {conflictPeriods.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4 flex gap-2">
+                    <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800 dark:text-amber-200">Este carregador já está reservado nos seguintes horários:</p>
+                      <ul className="mt-2 list-disc list-inside text-sm text-amber-800/90 dark:text-amber-200/90 space-y-1">
+                        {conflictPeriods.map((p, i) => (
+                          <li key={i}>
+                            {new Date(p.start_time).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}{" "}
+                            das {new Date(p.start_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}{" "}
+                            às {new Date(p.end_time).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-sm mt-2 text-amber-800/80 dark:text-amber-200/80">Escolha outra data ou horário para evitar conflito.</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-2 pt-4">
-                  <Button type="submit" className="flex-1" disabled={submitting}>
+                  <Button type="submit" className="flex-1" disabled={submitting || !selectedChargerId || conflictPeriods.length > 0}>
                     {submitting ? "Reservando..." : "Continuar para Pagamento"}
                   </Button>
                   <Link href={`/stations/${station.id}`} className="flex-1">

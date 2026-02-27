@@ -5,12 +5,13 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { getCurrentUser } from "@/lib/auth-firebase"
 import { createStation } from "@/lib/firestore"
+import { geocodeAddress } from "@/lib/geocode"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { Plus, X } from "lucide-react"
+import { Plus, X, MapPin, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 
@@ -23,15 +24,15 @@ export default function NewStation() {
     state: "",
     latitude: "",
     longitude: "",
-    total_chargers: "",
     price_per_kwh: "",
-    power_output: "",
   })
   const [connectorTypes, setConnectorTypes] = useState<string[]>([])
   const [amenities, setAmenities] = useState<string[]>([])
   const [newConnector, setNewConnector] = useState("")
   const [newAmenity, setNewAmenity] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [geocoding, setGeocoding] = useState(false)
+  const [geoError, setGeoError] = useState<string | null>(null)
 
   useEffect(() => {
     const user = getCurrentUser()
@@ -40,10 +41,55 @@ export default function NewStation() {
     }
   }, [router])
 
+  const lat = Number.parseFloat(formData.latitude)
+  const lng = Number.parseFloat(formData.longitude)
+  const hasValidCoords =
+    !Number.isNaN(lat) &&
+    !Number.isNaN(lng) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lng >= -180 &&
+    lng <= 180
+  const isZeroZero = hasValidCoords && lat === 0 && lng === 0
+
+  const handleGeocode = async () => {
+    setGeoError(null)
+    if (!formData.address?.trim()) {
+      setGeoError("Preencha o endereço antes de buscar.")
+      return
+    }
+    setGeocoding(true)
+    try {
+      const result = await geocodeAddress(
+        formData.address.trim(),
+        formData.city.trim(),
+        formData.state.trim()
+      )
+      if (result) {
+        setFormData((prev) => ({
+          ...prev,
+          latitude: String(result.lat),
+          longitude: String(result.lon),
+        }))
+      } else {
+        setGeoError("Endereço não encontrado. Ajuste o texto ou informe latitude/longitude manualmente.")
+      }
+    } catch {
+      setGeoError("Erro ao buscar coordenadas. Tente informar latitude e longitude manualmente.")
+    } finally {
+      setGeocoding(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const user = getCurrentUser()
     if (!user) return
+    if (!hasValidCoords || isZeroZero) {
+      const msg =
+        "A localização no mapa está vazia ou (0, 0). A estação pode aparecer no lugar errado. Use \"Buscar pelo endereço\" ou preencha Latitude e Longitude manualmente. Deseja mesmo criar?"
+      if (typeof window !== "undefined" && !window.confirm(msg)) return
+    }
     setSubmitting(true)
     try {
       await createStation({
@@ -51,10 +97,9 @@ export default function NewStation() {
         address: formData.address,
         city: formData.city || "—",
         state: formData.state || "—",
-        latitude: Number.parseFloat(formData.latitude) || 0,
-        longitude: Number.parseFloat(formData.longitude) || 0,
+        latitude: hasValidCoords ? lat : 0,
+        longitude: hasValidCoords ? lng : 0,
         price_per_kwh: Number.parseFloat(formData.price_per_kwh) || 0,
-        power_output: formData.power_output,
         connector_types: connectorTypes,
         amenities: amenities,
         status: "active",
@@ -132,28 +177,58 @@ export default function NewStation() {
                 </div>
               </div>
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="total_chargers">Número de Carregadores</Label>
-                  <Input
-                    id="total_chargers"
-                    type="number"
-                    required
-                    value={formData.total_chargers}
-                    onChange={(e) => setFormData({ ...formData, total_chargers: e.target.value })}
-                    placeholder="8"
-                  />
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base">Localização no mapa</Label>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="power_output">Potência</Label>
-                  <Input
-                    id="power_output"
-                    required
-                    value={formData.power_output}
-                    onChange={(e) => setFormData({ ...formData, power_output: e.target.value })}
-                    placeholder="50 kW"
-                  />
+                <p className="text-sm text-muted-foreground">
+                  Defina as coordenadas para o marcador no mapa: use o botão abaixo com o endereço preenchido ou informe latitude e longitude manualmente.
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGeocode}
+                    disabled={geocoding}
+                  >
+                    {geocoding ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span className="ml-2">Buscando...</span>
+                      </>
+                    ) : (
+                      "Buscar pelo endereço"
+                    )}
+                  </Button>
+                </div>
+                {geoError && (
+                  <p className="text-sm text-destructive">{geoError}</p>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="latitude">Latitude</Label>
+                    <Input
+                      id="latitude"
+                      type="number"
+                      step="any"
+                      value={formData.latitude}
+                      onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
+                      placeholder="Ex: -23.5505"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="longitude">Longitude</Label>
+                    <Input
+                      id="longitude"
+                      type="number"
+                      step="any"
+                      value={formData.longitude}
+                      onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
+                      placeholder="Ex: -46.6333"
+                    />
+                  </div>
                 </div>
               </div>
 

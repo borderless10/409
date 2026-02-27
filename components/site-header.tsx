@@ -18,6 +18,8 @@ type SiteHeaderProps = {
   title?: string
   logoHref?: string
   backHref?: string
+  /** Se true, usa router.replace(backHref) em vez de Link, evitando loop no histórico */
+  backReplace?: boolean
   user?: UserForHeader | null
 }
 
@@ -26,6 +28,7 @@ export function SiteHeader({
   title = "EV Charge",
   logoHref = "/",
   backHref,
+  backReplace = false,
   user,
 }: SiteHeaderProps) {
   const router = useRouter()
@@ -35,16 +38,21 @@ export function SiteHeader({
     router.push("/login")
   }
 
+  const handleBack = () => {
+    if (backHref) router.replace(backHref)
+  }
+
   return (
     <header className="sticky top-0 z-[1100] border-b border-primary-foreground/20 bg-primary text-primary-foreground">
       <div className="container mx-auto flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
-          {variant === "back" && backHref !== undefined ? (
-            <Button
-              variant="header"
-              size="sm"
-              asChild
-            >
+          {variant === "back" && backHref !== undefined && backReplace ? (
+            <Button variant="header" size="sm" onClick={handleBack}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Voltar
+            </Button>
+          ) : variant === "back" && backHref !== undefined ? (
+            <Button variant="header" size="sm" asChild>
               <Link href={backHref}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Voltar

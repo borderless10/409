@@ -23,6 +23,7 @@ export default function PaymentPage() {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState(false)
   const [paymentSuccess, setPaymentSuccess] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [cardNumber, setCardNumber] = useState("")
   const [cardName, setCardName] = useState("")
   const [cardExpiry, setCardExpiry] = useState("")
@@ -79,6 +80,18 @@ export default function PaymentPage() {
     }
   }
 
+  const handleCancelReservation = async () => {
+    if (!booking || cancelling) return
+    if (typeof window !== "undefined" && !window.confirm("Deseja mesmo cancelar esta reserva?")) return
+    setCancelling(true)
+    try {
+      await updateBooking({ ...booking, status: "cancelled" })
+      router.replace("/bookings")
+    } catch {
+      setCancelling(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -106,7 +119,7 @@ export default function PaymentPage() {
   if (paymentSuccess) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
-        <Card className="max-w-md">
+        <Card className="max-w-lg">
           <CardContent className="flex flex-col items-center justify-center py-12">
             <CheckCircle className="h-16 w-16 text-primary mb-4" />
             <h2 className="text-2xl font-bold mb-2">Pagamento Confirmado!</h2>
@@ -128,8 +141,8 @@ export default function PaymentPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader variant="back" backHref="/bookings" />
-      <main className="flex-1 container mx-auto max-w-3xl px-4 py-6">
+      <SiteHeader variant="back" backHref="/bookings" backReplace />
+      <main className="flex-1 container mx-auto max-w-5xl px-4 py-6">
         <div className="mb-6">
           <h1 className="text-3xl font-bold">Pagamento</h1>
           <p className="text-muted-foreground mt-1">Complete o pagamento para confirmar sua reserva</p>
@@ -139,9 +152,9 @@ export default function PaymentPage() {
           <div>
             <Card>
               <CardHeader>
-                <CardTitle>Resumo da Reserva</CardTitle>
+                <CardTitle className="text-lg md:text-xl">Resumo da Reserva</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
+              <CardContent className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Estação</p>
                   <p className="font-medium">{station.name}</p>
@@ -201,11 +214,11 @@ export default function PaymentPage() {
           <div>
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
                   <CreditCard className="h-5 w-5" />
                   Informações de Pagamento
                 </CardTitle>
-                <CardDescription>Pagamento seguro via cartão de crédito</CardDescription>
+                <CardDescription className="text-sm md:text-base">Pagamento seguro via cartão de crédito</CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -283,6 +296,16 @@ export default function PaymentPage() {
                     ) : (
                       `Pagar R$ ${totalAmount.toFixed(2)}`
                     )}
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full mt-3"
+                    disabled={processing || cancelling}
+                    onClick={handleCancelReservation}
+                  >
+                    {cancelling ? "Cancelando..." : "Cancelar reserva"}
                   </Button>
                 </form>
               </CardContent>

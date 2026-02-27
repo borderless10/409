@@ -5,6 +5,11 @@ import {
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   type User as FirebaseUser,
 } from "firebase/auth"
 import { auth } from "./firebase"
@@ -21,9 +26,9 @@ let authReady = false
 export function initAuthStateListener(): () => void {
   if (!auth) return () => {}
   return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
-    authReady = true
     if (!fbUser) {
       cachedUser = null
+      authReady = true
       return
     }
     let profile = await getUser(fbUser.uid)
@@ -38,6 +43,7 @@ export function initAuthStateListener(): () => void {
       profile = await getUser(fbUser.uid)
     }
     cachedUser = profile ?? null
+    authReady = true
   })
 }
 
@@ -47,9 +53,11 @@ export function isAuthReady(): boolean {
 
 /**
  * Login com e-mail e senha. Cria ou atualiza o documento do usuário em Firestore.
+ * `rememberMe` controla se a sessão será persistida no navegador ou apenas na aba.
  */
-export async function login(email: string, password: string): Promise<User> {
+export async function login(email: string, password: string, rememberMe: boolean = true): Promise<User> {
   if (!auth) throw new Error("Firebase não configurado. Defina as variáveis NEXT_PUBLIC_FIREBASE_* em .env.local")
+  await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence)
   const cred = await signInWithEmailAndPassword(auth, email, password)
   let profile = await getUser(cred.user.uid)
   if (!profile) {
@@ -106,4 +114,16 @@ export async function getCurrentUserAsync(): Promise<User | null> {
   const profile = await getUser(fbUser.uid)
   if (profile) cachedUser = profile
   return profile
+}
+
+/**
+ * Reautentica o usuário atual com a senha (ex.: antes de ações destrutivas).
+ * Falha se o usuário não estiver logado ou não tiver e-mail.
+ */
+export async function reauthenticateWithPassword(password: string): Promise<void> {
+  if (!auth?.currentUser) throw new Error("Usuário não está logado.")
+  const email = auth.currentUser.email
+  if (!email) throw new Error("E-mail do usuário não disponível.")
+  const cred = EmailAuthProvider.credential(email, password)
+  await reauthenticateWithCredential(auth.currentUser, cred)
 }

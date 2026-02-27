@@ -53,48 +53,48 @@ export default function AdminDashboard() {
           <p className="text-muted-foreground">Gerencie suas estações de recarga</p>
         </div>
 
-        <div className="mb-8 grid gap-4 md:grid-cols-4">
+        <div className="mb-8 grid gap-5 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total de Estações</CardTitle>
+              <CardTitle className="text-sm md:text-base font-medium">Total de Estações</CardTitle>
               <MapPin className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{stations.length}</div>
-              <p className="text-xs text-muted-foreground">{totalChargers} carregadores totais</p>
+              <div className="text-2xl md:text-3xl font-bold">{stations.length}</div>
+              <p className="text-xs md:text-sm text-muted-foreground">{totalChargers} carregadores totais</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Carregadores Disponíveis</CardTitle>
+              <CardTitle className="text-sm md:text-base font-medium">Carregadores Disponíveis</CardTitle>
               <Zap className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{availableChargers}</div>
-              <p className="text-xs text-muted-foreground">{availability}% disponibilidade</p>
+              <div className="text-2xl md:text-3xl font-bold">{availableChargers}</div>
+              <p className="text-xs md:text-sm text-muted-foreground">{availability}% disponibilidade</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Reservas Ativas</CardTitle>
+              <CardTitle className="text-sm md:text-base font-medium">Reservas Ativas</CardTitle>
               <Clock className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{activeBookings}</div>
-              <p className="text-xs text-muted-foreground">{bookings.length} reservas totais</p>
+              <div className="text-2xl md:text-3xl font-bold">{activeBookings}</div>
+              <p className="text-xs md:text-sm text-muted-foreground">{bookings.length} reservas totais</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Receita Total</CardTitle>
+              <CardTitle className="text-sm md:text-base font-medium">Receita Total</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">R$ {totalRevenue.toFixed(2)}</div>
-              <p className="text-xs text-muted-foreground">Pagamentos confirmados</p>
+              <div className="text-2xl md:text-3xl font-bold">R$ {totalRevenue.toFixed(2)}</div>
+              <p className="text-xs md:text-sm text-muted-foreground">Pagamentos confirmados</p>
             </CardContent>
           </Card>
         </div>

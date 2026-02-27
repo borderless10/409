@@ -13,6 +13,7 @@ import { MapPin, Search } from "lucide-react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
 import { SiteHeader } from "@/components/site-header"
+import { formatAmperageRange, formatPowerRange } from "@/lib/utils"
 
 const StationMap = dynamic(() => import("@/components/station-map"), {
   ssr: false,
@@ -74,7 +75,7 @@ export default function HomeContent() {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <SiteHeader variant="home" user={user} />
-      <main className="flex-1 container mx-auto px-4 py-6">
+      <main className="flex-1 container mx-auto max-w-7xl px-4 py-6">
         <div className="mb-6 space-y-2">
           <h2 className="text-3xl font-bold">Encontre Estações de Recarga</h2>
           <p className="text-muted-foreground">
@@ -125,7 +126,7 @@ export default function HomeContent() {
                 {filteredStations.length} estações encontradas
               </h3>
 
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {filteredStations.slice(0, 5).map((station) => (
                   <Card
                     key={station.id}
@@ -137,21 +138,21 @@ export default function HomeContent() {
                     onClick={() => setSelectedStation(station)}
                   >
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-base">{station.name}</CardTitle>
-                      <CardDescription className="text-xs">
+                      <CardTitle className="text-lg md:text-xl">{station.name}</CardTitle>
+                      <CardDescription className="text-sm">
                         {station.address}
                       </CardDescription>
                     </CardHeader>
 
-                    <CardContent className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
+                    <CardContent className="space-y-3">
+                      <div className="flex items-center justify-between text-sm md:text-base">
                         <span className="text-muted-foreground">Disponível</span>
                         <span className="font-medium text-primary">
                           {(station.available_chargers ?? 0)}/{(station.total_chargers ?? 0)}
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center justify-between text-sm md:text-base">
                         <span className="text-muted-foreground">Preço</span>
                         <span className="font-medium">
                           R$ {station.price_per_kwh.toFixed(2)}/kWh
@@ -159,7 +160,7 @@ export default function HomeContent() {
                       </div>
 
                       <Link href={`/stations/${station.id}`}>
-                        <Button size="sm" className="mt-2 w-full">
+                        <Button size="default" className="mt-3 w-full">
                           Reservar
                         </Button>
                       </Link>
@@ -170,28 +171,38 @@ export default function HomeContent() {
             </div>
           </div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {filteredStations.map((station) => (
               <Card key={station.id} className="transition-shadow hover:shadow-md">
                 <CardHeader>
-                  <CardTitle className="text-lg">{station.name}</CardTitle>
-                  <CardDescription>{station.address}</CardDescription>
+                  <CardTitle className="text-lg md:text-xl">{station.name}</CardTitle>
+                  <CardDescription className="text-sm md:text-base">{station.address}</CardDescription>
                 </CardHeader>
 
-                <CardContent className="space-y-3">
-                  <div className="flex items-center justify-between text-sm">
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between text-sm md:text-base">
                     <span className="text-muted-foreground">Carregadores</span>
                     <span className="font-medium">
                       {(station.available_chargers ?? 0)}/{(station.total_chargers ?? 0)} disponíveis
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">Potência</span>
-                    <span className="font-medium">{station.power_output ?? "—"}</span>
-                  </div>
+                  {(station.total_chargers ?? 0) >= 1 && (
+                    <div className="flex items-center justify-between text-sm md:text-base">
+                      <span className="text-muted-foreground">Potência</span>
+                      <span className="font-medium">{formatPowerRange(station)}</span>
+                    </div>
+                  )}
 
-                  <div className="flex items-center justify-between text-sm">
+                  {(station.total_chargers ?? 0) >= 1 &&
+                    formatAmperageRange(station) !== "—" && (
+                      <div className="flex items-center justify-between text-sm md:text-base">
+                        <span className="text-muted-foreground">Amperagem</span>
+                        <span className="font-medium">{formatAmperageRange(station)}</span>
+                      </div>
+                    )}
+
+                  <div className="flex items-center justify-between text-sm md:text-base">
                     <span className="text-muted-foreground">Preço</span>
                     <span className="font-medium">
                       R$ {station.price_per_kwh.toFixed(2)}/kWh
@@ -216,11 +227,11 @@ export default function HomeContent() {
                     </div>
                   )}
 
-                  <Link href={`/stations/${station.id}`}>
-                    <Button size="sm" className="mt-2 w-full">
-                      Ver Detalhes
-                    </Button>
-                  </Link>
+<Link href={`/stations/${station.id}`}>
+                        <Button size="default" className="mt-3 w-full">
+                          Ver Detalhes
+                        </Button>
+                      </Link>
                 </CardContent>
               </Card>
             ))}

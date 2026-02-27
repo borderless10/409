@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getCurrentUser, isAuthReady } from "@/lib/auth-firebase"
-import { getUserBookings, getStation } from "@/lib/firestore"
-import type { Booking, Station } from "@/lib/types"
+import { getUserBookings, getStation, getCharger, updateBooking, updateCharger } from "@/lib/firestore"
+import type { Booking, Station, Charger } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,7 +16,10 @@ export default function MyBookings() {
   const router = useRouter()
   const [bookings, setBookings] = useState<Booking[]>([])
   const [stations, setStations] = useState<Map<string, Station>>(new Map())
+  const [chargersMap, setChargersMap] = useState<Map<string, Charger>>(new Map())
   const [loading, setLoading] = useState(true)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [arrivingId, setArrivingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAuthReady()) return
@@ -31,20 +34,65 @@ export default function MyBookings() {
       if (cancelled) return
       setBookings(userBookings)
       const stationMap = new Map<string, Station>()
-      Promise.all(
-        userBookings.map((b) =>
+      const chargerMap = new Map<string, Charger>()
+      Promise.all([
+        ...userBookings.map((b) =>
           getStation(b.station_id).then((station) => {
             if (station) stationMap.set(b.station_id, station)
           })
-        )
-      ).then(() => {
-        if (!cancelled) setStations(stationMap)
+        ),
+        ...userBookings.map((b) =>
+          getCharger(b.charger_id).then((charger) => {
+            if (charger) chargerMap.set(b.charger_id, charger)
+          })
+        ),
+      ]).then(() => {
+        if (!cancelled) {
+          setStations(stationMap)
+          setChargersMap(chargerMap)
+        }
       })
     }).finally(() => {
       if (!cancelled) setLoading(false)
     })
     return () => { cancelled = true }
   }, [router])
+
+  async function handleCancelReservation(booking: Booking) {
+    if (cancellingId || !booking) return
+    if (typeof window !== "undefined" && !window.confirm("Deseja mesmo cancelar esta reserva?")) return
+    setCancellingId(booking.id)
+    try {
+      const updated: Booking = { ...booking, status: "cancelled" }
+      await updateBooking(updated)
+      setBookings((prev) => prev.map((b) => (b.id === booking.id ? updated : b)))
+    } finally {
+      setCancellingId(null)
+    }
+  }
+
+  async function handleArriveAtCharger(booking: Booking) {
+    if (arrivingId || !booking) return
+    const charger = chargersMap.get(booking.charger_id)
+    if (!charger || charger.status === "occupied") return
+    setArrivingId(booking.id)
+    try {
+      await updateCharger(charger.id, {
+        status: "occupied",
+        current_session_id: booking.id,
+      })
+      const updated: Booking = { ...booking, status: "active" }
+      await updateBooking(updated)
+      setBookings((prev) => prev.map((b) => (b.id === booking.id ? updated : b)))
+      setChargersMap((prev) => {
+        const clone = new Map(prev)
+        clone.set(charger.id, { ...charger, status: "occupied", current_session_id: booking.id })
+        return clone
+      })
+    } finally {
+      setArrivingId(null)
+    }
+  }
 
   if (loading) {
     return (
@@ -59,8 +107,8 @@ export default function MyBookings() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader variant="back" backHref="/" />
-      <main className="flex-1 container mx-auto max-w-4xl px-4 py-6">
+      <SiteHeader variant="back" backHref="/" backReplace />
+      <main className="flex-1 container mx-auto max-w-5xl px-4 py-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Minhas Reservas</h1>
           <p className="text-muted-foreground mt-1">Acompanhe todas as suas reservas</p>
@@ -78,9 +126,10 @@ export default function MyBookings() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {bookings.map((booking) => {
               const station = stations.get(booking.station_id)
+              const charger = chargersMap.get(booking.charger_id)
               if (!station) return null
 
               return (
@@ -88,11 +137,16 @@ export default function MyBookings() {
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div>
-                        <CardTitle className="text-lg">{station.name}</CardTitle>
-                        <CardDescription className="flex items-center gap-1 mt-1">
+                        <CardTitle className="text-lg md:text-xl">{station.name}</CardTitle>
+                        <CardDescription className="flex items-center gap-1 mt-1 text-sm md:text-base">
                           <MapPin className="h-3 w-3" />
                           {station.address}
                         </CardDescription>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Carregador {charger?.charger_number ?? "—"}
+                          {charger?.connector_type && ` • ${charger.connector_type}`}
+                          {charger?.power_output && ` • ${charger.power_output}`}
+                        </p>
                       </div>
                       <Badge
                         variant={
@@ -112,16 +166,16 @@ export default function MyBookings() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm">
+                    <div className="grid gap-5 md:grid-cols-2">
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-sm md:text-base">
                           <Calendar className="h-4 w-4 text-muted-foreground" />
                           <span className="text-muted-foreground">Data:</span>
                           <span className="font-medium">
                             {new Date(booking.start_time).toLocaleDateString("pt-BR")}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-sm md:text-base">
                           <Clock className="h-4 w-4 text-muted-foreground" />
                           <span className="text-muted-foreground">Horário:</span>
                           <span className="font-medium">
@@ -137,21 +191,21 @@ export default function MyBookings() {
                           </span>
                         </div>
                       </div>
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {booking.total_kwh && (
-                          <div className="flex items-center gap-2 text-sm">
+                          <div className="flex items-center gap-2 text-sm md:text-base">
                             <span className="text-muted-foreground">Consumo:</span>
                             <span className="font-medium">{booking.total_kwh} kWh</span>
                           </div>
                         )}
                         {booking.total_cost && (
-                          <div className="flex items-center gap-2 text-sm">
+                          <div className="flex items-center gap-2 text-sm md:text-base">
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                             <span className="text-muted-foreground">Valor:</span>
                             <span className="font-medium">R$ {booking.total_cost.toFixed(2)}</span>
                           </div>
                         )}
-                        <div className="flex items-center gap-2 text-sm">
+                        <div className="flex items-center gap-2 text-sm md:text-base">
                           <span className="text-muted-foreground">Pagamento:</span>
                           <Badge
                             variant={booking.payment_status === "paid" ? "default" : "outline"}
@@ -165,13 +219,35 @@ export default function MyBookings() {
                       </div>
                     </div>
 
-                    {booking.status === "pending" && booking.payment_status === "pending" && (
-                      <div className="mt-4 pt-4 border-t">
-                        <Link href={`/bookings/${booking.id}/payment`}>
-                          <Button size="sm" className="w-full">
-                            Completar Pagamento
+                    {(booking.status === "pending" || booking.status === "active") && (
+                      <div className="mt-4 pt-4 border-t space-y-2">
+                        {booking.status === "pending" && booking.payment_status === "pending" && (
+                          <Link href={`/bookings/${booking.id}/payment`}>
+                            <Button size="sm" className="w-full">
+                              Completar Pagamento
+                            </Button>
+                          </Link>
+                        )}
+                        {booking.status === "active" && (
+                          <Button
+                            size="sm"
+                            className="w-full"
+                            variant="default"
+                            disabled={arrivingId === booking.id}
+                            onClick={() => handleArriveAtCharger(booking)}
+                          >
+                            {arrivingId === booking.id ? "Confirmando..." : "Cheguei ao carregador"}
                           </Button>
-                        </Link>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          disabled={cancellingId === booking.id}
+                          onClick={() => handleCancelReservation(booking)}
+                        >
+                          {cancellingId === booking.id ? "Cancelando..." : "Cancelar reserva"}
+                        </Button>
                       </div>
                     )}
                   </CardContent>

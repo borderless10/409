@@ -24,11 +24,21 @@ service cloud.firestore {
 
     match /chargers/{chargerId} {
       allow read: if true;
-      allow write: if isAdmin();
+
+      // Admin pode criar/atualizar/apagar livremente
+      allow create, update, delete: if isAdmin();
+
+      // Usuário autenticado pode apenas mudar status e current_session_id.
+      // Nenhum outro campo do carregador pode ser alterado por ele.
+      allow update: if isAuthenticated()
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(['status', 'current_session_id'])
+        && request.resource.data.status in ['available', 'occupied', 'maintenance', 'reserved'];
     }
 
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated() && (resource.data.user_id == request.auth.uid || isAdmin());
+      // Read: qualquer usuário autenticado pode ler (necessário para verificar conflitos ao reservar por charger_id).
+      // Write: apenas o dono da reserva ou admin.
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
       allow update, delete: if isAuthenticated() && (resource.data.user_id == request.auth.uid || isAdmin());
     }

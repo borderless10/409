@@ -43,6 +43,10 @@ export interface Station {
   available_chargers?: number
   power_output?: string
   connector_types?: string[]
+  min_current_a?: number
+  max_current_a?: number
+  min_power_kw?: number
+  max_power_kw?: number
 }
 
 /* =========================
@@ -56,6 +60,12 @@ export interface Charger {
   status: "available" | "occupied" | "maintenance" | "reserved"
   connector_type: string
   power_output: string
+  /** Potência máxima em kW (numérico) */
+  power_kw?: number
+  /** Corrente máxima em A (numérico) */
+  current_a?: number
+  /** Tensão em V usada para conversão P = U×I (ex.: 400 trifásico) */
+  voltage_v?: number
   current_session_id?: string
   price_per_kwh?: number
   model?: string
