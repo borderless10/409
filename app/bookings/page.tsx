@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { getCurrentUser, isAuthReady } from "@/lib/auth-firebase"
 import { getUserBookings, getStation, getCharger, updateBooking, updateCharger } from "@/lib/firestore"
+import { auth } from "@/lib/firebase"
+import { onAuthStateChanged } from "firebase/auth"
 import type { Booking, Station, Charger } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,40 +23,50 @@ export default function MyBookings() {
   const [arrivingId, setArrivingId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isAuthReady()) return
-    const user = getCurrentUser()
-    if (!user) {
+    let cancelled = false
+    if (!auth) {
       router.push("/login")
       return
     }
 
-    let cancelled = false
-    getUserBookings(user.id).then((userBookings) => {
+    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (cancelled) return
-      setBookings(userBookings)
-      const stationMap = new Map<string, Station>()
-      const chargerMap = new Map<string, Charger>()
-      Promise.all([
-        ...userBookings.map((b) =>
-          getStation(b.station_id).then((station) => {
-            if (station) stationMap.set(b.station_id, station)
-          })
-        ),
-        ...userBookings.map((b) =>
-          getCharger(b.charger_id).then((charger) => {
-            if (charger) chargerMap.set(b.charger_id, charger)
-          })
-        ),
-      ]).then(() => {
+      if (!fbUser) {
+        router.push("/login")
+        return
+      }
+
+      try {
+        const userBookings = await getUserBookings(fbUser.uid)
+        if (cancelled) return
+        setBookings(userBookings)
+        const stationMap = new Map<string, Station>()
+        const chargerMap = new Map<string, Charger>()
+        await Promise.all([
+          ...userBookings.map((b) =>
+            getStation(b.station_id).then((station) => {
+              if (station) stationMap.set(b.station_id, station)
+            })
+          ),
+          ...userBookings.map((b) =>
+            getCharger(b.charger_id).then((charger) => {
+              if (charger) chargerMap.set(b.charger_id, charger)
+            })
+          ),
+        ])
         if (!cancelled) {
           setStations(stationMap)
           setChargersMap(chargerMap)
         }
-      })
-    }).finally(() => {
-      if (!cancelled) setLoading(false)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     })
-    return () => { cancelled = true }
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [router])
 
   async function handleCancelReservation(booking: Booking) {
@@ -65,6 +76,10 @@ export default function MyBookings() {
     try {
       const updated: Booking = { ...booking, status: "cancelled" }
       await updateBooking(updated)
+      await updateCharger(booking.charger_id, {
+        status: "available",
+        current_session_id: null as unknown as string,
+      })
       setBookings((prev) => prev.map((b) => (b.id === booking.id ? updated : b)))
     } finally {
       setCancellingId(null)

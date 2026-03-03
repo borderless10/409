@@ -4,7 +4,7 @@ import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { getStationWithCounts, getStationChargers, getBookingsByCharger, createBooking } from "@/lib/firestore"
-import { getCurrentUser, isAuthReady } from "@/lib/auth-firebase"
+import { getCurrentUserAsync } from "@/lib/auth-firebase"
 import type { Station, Charger } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -32,28 +32,34 @@ export default function BookStation() {
   const [conflictPeriods, setConflictPeriods] = useState<Array<{ start_time: string; end_time: string }>>([])
 
   useEffect(() => {
-    if (!isAuthReady()) return
-    const user = getCurrentUser()
-    if (!user) {
-      router.push("/login")
+    let cancelled = false
+    if (!stationId) {
+      setLoading(false)
       return
     }
-    if (!stationId) return
-    Promise.all([
-      getStationWithCounts(stationId),
-      getStationChargers(stationId),
-    ]).then(([data, stationChargers]) => {
+    ;(async () => {
+      const user = await getCurrentUserAsync()
+      if (!user) {
+        if (!cancelled) router.push("/login")
+        return
+      }
+      const [data, stationChargers] = await Promise.all([
+        getStationWithCounts(stationId),
+        getStationChargers(stationId),
+      ])
+      if (cancelled) return
       setStation(data ?? null)
       setChargers(stationChargers)
       const available = stationChargers.find((c) => c.status === "available")
       setSelectedChargerId(available?.id ?? stationChargers[0]?.id ?? null)
-      setLoading(false)
       const today = new Date().toISOString().split("T")[0]
       setSelectedDate(today)
       const now = new Date()
       now.setHours(now.getHours() + 1, 0, 0, 0)
       setSelectedTime(`${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`)
-    })
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
   }, [stationId, router])
 
   useEffect(() => {
@@ -89,7 +95,7 @@ export default function BookStation() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!station) return
-    const user = getCurrentUser()
+    const user = await getCurrentUserAsync()
     if (!user) {
       router.push("/login")
       return

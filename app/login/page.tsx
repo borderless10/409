@@ -43,11 +43,6 @@ export default function LoginPage() {
     }
   }
 
-  const quickLogin = (userEmail: string) => {
-    setEmail(userEmail)
-    setPassword("password")
-  }
-
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
@@ -127,24 +122,6 @@ export default function LoginPage() {
               Crie sua conta agora
             </Link>
           </p>
-
-          <div className="mt-6 space-y-2">
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => quickLogin("joao@email.com")}
-            >
-              Demo Usuário
-            </Button>
-
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => quickLogin("admin@email.com")}
-            >
-              Demo Administrador
-            </Button>
-          </div>
         </CardContent>
       </Card>
     </div>

@@ -10,9 +10,10 @@ import {
   deleteStationWithChargers,
   updateCharger,
   deleteCharger,
+  getPayments,
 } from "@/lib/firestore"
 import { reauthenticateWithPassword } from "@/lib/auth-firebase"
-import type { Station, Booking, Charger } from "@/lib/types"
+import type { Station, Booking, Charger, Payment } from "@/lib/types"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -39,6 +40,7 @@ const CHARGER_STATUSES = ["available", "occupied", "maintenance", "reserved"] as
 export default function AdminStationsPage() {
   const [stations, setStations] = useState<Station[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
   const [selectedStation, setSelectedStation] = useState<Station | null>(null)
   const [chargers, setChargers] = useState<Charger[]>([])
   const [chargersLoading, setChargersLoading] = useState(false)
@@ -88,9 +90,10 @@ export default function AdminStationsPage() {
   })
 
   useEffect(() => {
-    Promise.all([getStationsWithCounts(), getBookings()]).then(([s, b]) => {
+    Promise.all([getStationsWithCounts(), getBookings(), getPayments()]).then(([s, b, p]) => {
       setStations(s)
       setBookings(b)
+      setPayments(p)
       setLoading(false)
     })
   }, [])
@@ -254,6 +257,30 @@ export default function AdminStationsPage() {
   const totalRevenue = bookings
     .filter((b) => b.payment_status === "paid")
     .reduce((sum, b) => sum + (b.total_cost || 0), 0)
+
+  const stationPayments =
+    selectedStation && payments.length
+      ? payments
+          .map((payment) => ({
+            payment,
+            booking: bookings.find((b) => b.id === payment.booking_id) || null,
+          }))
+          .filter(
+            (entry) =>
+              entry.booking &&
+              entry.booking.station_id === selectedStation.id &&
+              entry.payment.status === "completed"
+          )
+          .sort((a, b) => {
+            const da = new Date(a.payment.created_at).getTime()
+            const db = new Date(b.payment.created_at).getTime()
+            if (Number.isNaN(da) && Number.isNaN(db)) return 0
+            if (Number.isNaN(da)) return 1
+            if (Number.isNaN(db)) return -1
+            return db - da
+          })
+          .slice(0, 10)
+      : []
 
   return (
     <div className="space-y-8">
@@ -753,9 +780,66 @@ export default function AdminStationsPage() {
                   </TabsContent>
 
                   <TabsContent value="transactions">
-                    <p className="text-sm text-muted-foreground">
-                      Transações da estação (em breve)
-                    </p>
+                    {stationPayments.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Ainda não há pagamentos registrados para esta estação.
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Últimos {stationPayments.length} pagamentos desta estação.
+                        </p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead className="border-b">
+                              <tr>
+                                <th className="py-2 pr-4 text-left font-medium">Data</th>
+                                <th className="py-2 pr-4 text-left font-medium">Reserva</th>
+                                <th className="py-2 pr-4 text-left font-medium">Método</th>
+                                <th className="py-2 pl-4 text-right font-medium">Valor</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {stationPayments.map(({ payment, booking }) => {
+                                const date = new Date(payment.created_at)
+                                const hasValidDate = !Number.isNaN(date.getTime())
+                                const bookingLabel = booking
+                                  ? booking.id.slice(0, 6).toUpperCase()
+                                  : payment.booking_id.slice(0, 6).toUpperCase()
+                                return (
+                                  <tr
+                                    key={payment.id}
+                                    className="border-b last:border-none hover:bg-muted/30 transition-colors"
+                                  >
+                                    <td className="py-2 pr-4 align-top">
+                                      {hasValidDate
+                                        ? `${date.toLocaleDateString("pt-BR")} ${date.toLocaleTimeString(
+                                            "pt-BR",
+                                            { hour: "2-digit", minute: "2-digit" }
+                                          )}`
+                                        : "—"}
+                                    </td>
+                                    <td className="py-2 pr-4 align-top font-mono text-xs">
+                                      {bookingLabel}
+                                    </td>
+                                    <td className="py-2 pr-4 align-top capitalize">
+                                      {payment.payment_method || "—"}
+                                    </td>
+                                    <td className="py-2 pl-4 align-top text-right font-medium">
+                                      {payment.amount.toLocaleString("pt-BR", {
+                                        style: "currency",
+                                        currency: "BRL",
+                                        minimumFractionDigits: 2,
+                                      })}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
                   </TabsContent>
                 </Tabs>
               </CardContent>

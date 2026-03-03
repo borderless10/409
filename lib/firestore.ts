@@ -422,10 +422,27 @@ export async function getBookings(): Promise<Booking[]> {
   const updates: Promise<void>[] = []
   for (const booking of bookings) {
     const end = new Date(booking.end_time).getTime()
-    if (booking.status === "active" && !Number.isNaN(end) && end <= now) {
-      booking.status = "completed"
-      const ref = doc(getDb(), COLLECTIONS.BOOKINGS, booking.id)
-      updates.push(updateDoc(ref, { status: "completed" }))
+    if (!Number.isNaN(end) && end <= now) {
+      const bookingRef = doc(getDb(), COLLECTIONS.BOOKINGS, booking.id)
+      if (booking.status === "active") {
+        booking.status = "completed"
+        updates.push(updateDoc(bookingRef, { status: "completed" }))
+        updates.push(
+          updateCharger(booking.charger_id, {
+            status: "available",
+            current_session_id: null as unknown as string,
+          })
+        )
+      } else if (booking.status === "pending") {
+        booking.status = "cancelled"
+        updates.push(updateDoc(bookingRef, { status: "cancelled" }))
+        updates.push(
+          updateCharger(booking.charger_id, {
+            status: "available",
+            current_session_id: null as unknown as string,
+          })
+        )
+      }
     }
   }
   if (updates.length > 0) {
@@ -447,10 +464,27 @@ export async function getUserBookings(userId: string): Promise<Booking[]> {
   const updates: Promise<void>[] = []
   for (const booking of bookings) {
     const end = new Date(booking.end_time).getTime()
-    if (booking.status === "active" && !Number.isNaN(end) && end <= now) {
-      booking.status = "completed"
-      const ref = doc(getDb(), COLLECTIONS.BOOKINGS, booking.id)
-      updates.push(updateDoc(ref, { status: "completed" }))
+    if (!Number.isNaN(end) && end <= now) {
+      const bookingRef = doc(getDb(), COLLECTIONS.BOOKINGS, booking.id)
+      if (booking.status === "active") {
+        booking.status = "completed"
+        updates.push(updateDoc(bookingRef, { status: "completed" }))
+        updates.push(
+          updateCharger(booking.charger_id, {
+            status: "available",
+            current_session_id: null as unknown as string,
+          })
+        )
+      } else if (booking.status === "pending") {
+        booking.status = "cancelled"
+        updates.push(updateDoc(bookingRef, { status: "cancelled" }))
+        updates.push(
+          updateCharger(booking.charger_id, {
+            status: "available",
+            current_session_id: null as unknown as string,
+          })
+        )
+      }
     }
   }
   if (updates.length > 0) {
@@ -518,6 +552,13 @@ export async function createBooking(
   if (typeof booking.total_cost === "number") payload.total_cost = booking.total_cost
 
   const ref = await addDoc(collection(getDb(), COLLECTIONS.BOOKINGS), payload)
+
+  // Ao criar a reserva, marcar o carregador como "reserved"
+  await updateCharger(booking.charger_id, {
+    status: "reserved",
+    current_session_id: ref.id,
+  })
+
   return getDoc(ref).then((snap) => serializeBooking(snap.data() ?? {}, snap.id))
 }
 

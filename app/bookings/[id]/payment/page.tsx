@@ -3,7 +3,7 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { getBooking, getStation, updateBooking, createPayment } from "@/lib/firestore"
+import { getBooking, getStation, updateBooking, createPayment, updateCharger } from "@/lib/firestore"
 import type { Booking, Station } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -86,6 +86,10 @@ export default function PaymentPage() {
     setCancelling(true)
     try {
       await updateBooking({ ...booking, status: "cancelled" })
+      await updateCharger(booking.charger_id, {
+        status: "available",
+        current_session_id: null as unknown as string,
+      })
       router.replace("/bookings")
     } catch {
       setCancelling(false)
