@@ -12,11 +12,12 @@ import {
   query,
   where,
   orderBy,
+  limit,
   Timestamp,
   type DocumentData,
 } from "firebase/firestore"
 import { db } from "./firebase"
-import type { Station, Charger, Booking, ChargingSession, Payment, User } from "./types"
+import type { Station, Charger, Booking, ChargingSession, Payment, User, ActivityLog, ActivityLogType, ActivityLogPayload, Voucher, VoucherUsage } from "./types"
 
 function getDb() {
   if (!db) throw new Error("Firebase não configurado. Defina NEXT_PUBLIC_FIREBASE_* em .env.local")
@@ -30,6 +31,9 @@ const COLLECTIONS = {
   CHARGING_SESSIONS: "chargingSessions",
   PAYMENTS: "payments",
   USERS: "users",
+  ACTIVITY_LOG: "activityLog",
+  VOUCHERS: "vouchers",
+  VOUCHER_USAGES: "voucherUsages",
 } as const
 
 // -----------------------------
@@ -117,6 +121,7 @@ function serializeBooking(data: DocumentData, id: string): Booking {
     created_at: b.created_at instanceof Timestamp ? fromFirestoreTime(b.created_at) : String(b.created_at ?? ""),
     ...(typeof b.total_kwh === "number" && { total_kwh: b.total_kwh }),
     ...(typeof b.total_cost === "number" && { total_cost: b.total_cost }),
+    ...(b.voucher_id && { voucher_id: String(b.voucher_id) }),
   }
 }
 
@@ -147,6 +152,7 @@ function serializePayment(data: DocumentData, id: string): Payment {
     payment_method: String(p.payment_method ?? ""),
     created_at: p.created_at instanceof Timestamp ? fromFirestoreTime(p.created_at) : String(p.created_at ?? ""),
     ...(p.refund_of_id && { refund_of_id: String(p.refund_of_id) }),
+    ...(p.voucher_id && { voucher_id: String(p.voucher_id) }),
   }
 }
 
@@ -160,6 +166,47 @@ function serializeUser(data: DocumentData, id: string): User {
     created_at: u.created_at instanceof Timestamp ? fromFirestoreTime(u.created_at) : String(u.created_at ?? ""),
     ...(u.phone && { phone: String(u.phone) }),
     ...(u.updated_at && { updated_at: u.updated_at instanceof Timestamp ? fromFirestoreTime(u.updated_at) : String(u.updated_at) }),
+  }
+}
+
+function serializeActivityLog(data: DocumentData, id: string): ActivityLog {
+  const a = data as Record<string, unknown>
+  return {
+    id,
+    type: (a.type as ActivityLogType) ?? "booking_created",
+    actor_id: String(a.actor_id ?? ""),
+    actor_display: String(a.actor_display ?? ""),
+    created_at: a.created_at instanceof Timestamp ? fromFirestoreTime(a.created_at) : String(a.created_at ?? ""),
+    payload: a.payload as ActivityLogPayload,
+  }
+}
+
+function serializeVoucher(data: DocumentData, id: string): Voucher {
+  const v = data as Record<string, unknown>
+  return {
+    id,
+    code: String(v.code ?? ""),
+    name: String(v.name ?? ""),
+    discount_type: (v.discount_type as Voucher["discount_type"]) ?? "percent",
+    discount_value: Number(v.discount_value ?? 0),
+    max_uses: Number(v.max_uses ?? 0),
+    used_count: Number(v.used_count ?? 0),
+    one_per_user: Boolean(v.one_per_user),
+    created_at: v.created_at instanceof Timestamp ? fromFirestoreTime(v.created_at) : String(v.created_at ?? ""),
+    created_by: String(v.created_by ?? ""),
+    ...(v.active_from && { active_from: v.active_from instanceof Timestamp ? fromFirestoreTime(v.active_from) : String(v.active_from) }),
+    ...(v.active_until && { active_until: v.active_until instanceof Timestamp ? fromFirestoreTime(v.active_until) : String(v.active_until) }),
+  }
+}
+
+function serializeVoucherUsage(data: DocumentData, id: string): VoucherUsage {
+  const u = data as Record<string, unknown>
+  return {
+    id,
+    voucher_id: String(u.voucher_id ?? ""),
+    user_id: String(u.user_id ?? ""),
+    booking_id: String(u.booking_id ?? ""),
+    used_at: u.used_at instanceof Timestamp ? fromFirestoreTime(u.used_at) : String(u.used_at ?? ""),
   }
 }
 
@@ -550,6 +597,7 @@ export async function createBooking(
   }
   if (typeof booking.total_kwh === "number") payload.total_kwh = booking.total_kwh
   if (typeof booking.total_cost === "number") payload.total_cost = booking.total_cost
+  if (booking.voucher_id) payload.voucher_id = booking.voucher_id
 
   const ref = await addDoc(collection(getDb(), COLLECTIONS.BOOKINGS), payload)
 
@@ -575,6 +623,7 @@ export async function updateBooking(booking: Booking): Promise<void> {
   }
   if (typeof booking.total_kwh === "number") payload.total_kwh = booking.total_kwh
   if (typeof booking.total_cost === "number") payload.total_cost = booking.total_cost
+  if (booking.voucher_id) payload.voucher_id = booking.voucher_id
   await updateDoc(ref, payload)
 }
 
@@ -648,9 +697,158 @@ export async function createPayment(
     created_at: now,
   }
   if (payment.refund_of_id) payload.refund_of_id = payment.refund_of_id
+  if (payment.voucher_id) payload.voucher_id = payment.voucher_id
   const ref = await addDoc(collection(getDb(), COLLECTIONS.PAYMENTS), payload)
   const snap = await getDoc(ref)
   return serializePayment(snap.data() ?? {}, snap.id)
+}
+
+// -----------------------------
+// Vouchers
+// -----------------------------
+
+export async function createVoucher(
+  voucher: Omit<Voucher, "id" | "used_count" | "created_at">
+): Promise<Voucher> {
+  const now = Timestamp.now()
+  const payload: DocumentData = {
+    code: voucher.code.trim().toUpperCase(),
+    name: voucher.name.trim(),
+    discount_type: voucher.discount_type,
+    discount_value: voucher.discount_value,
+    max_uses: voucher.max_uses,
+    used_count: 0,
+    one_per_user: voucher.one_per_user,
+    created_at: now,
+    created_by: voucher.created_by,
+  }
+  if (voucher.active_from) payload.active_from = toFirestoreTime(voucher.active_from) ?? voucher.active_from
+  if (voucher.active_until) payload.active_until = toFirestoreTime(voucher.active_until) ?? voucher.active_until
+  const ref = await addDoc(collection(getDb(), COLLECTIONS.VOUCHERS), payload)
+  const snap = await getDoc(ref)
+  return serializeVoucher(snap.data() ?? {}, snap.id)
+}
+
+export async function getVouchers(): Promise<Voucher[]> {
+  const snap = await getDocs(
+    query(collection(getDb(), COLLECTIONS.VOUCHERS), orderBy("created_at", "desc"))
+  )
+  return snap.docs.map((d) => serializeVoucher(d.data(), d.id))
+}
+
+export async function getVoucher(id: string): Promise<Voucher | null> {
+  const snap = await getDoc(doc(getDb(), COLLECTIONS.VOUCHERS, id))
+  if (!snap.exists()) return null
+  return serializeVoucher(snap.data(), snap.id)
+}
+
+export async function getVoucherByCode(code: string): Promise<Voucher | null> {
+  const normalized = code.trim().toUpperCase()
+  const q = query(
+    collection(getDb(), COLLECTIONS.VOUCHERS),
+    where("code", "==", normalized)
+  )
+  const snap = await getDocs(q)
+  if (snap.empty) return null
+  return serializeVoucher(snap.docs[0].data(), snap.docs[0].id)
+}
+
+function isVoucherActive(v: Voucher): boolean {
+  const now = Date.now()
+  if (v.active_from) {
+    const from = new Date(v.active_from).getTime()
+    if (Number.isNaN(from) || now < from) return false
+  }
+  if (v.active_until) {
+    const until = new Date(v.active_until).getTime()
+    if (Number.isNaN(until) || now > until) return false
+  }
+  return true
+}
+
+export async function validateVoucher(code: string, userId?: string): Promise<{ valid: true; voucher: Voucher } | { valid: false; error: string }> {
+  const voucher = await getVoucherByCode(code)
+  if (!voucher) return { valid: false, error: "Cupom não encontrado." }
+  if (!isVoucherActive(voucher)) return { valid: false, error: "Cupom não está ativo ou já expirou." }
+  if (voucher.used_count >= voucher.max_uses) return { valid: false, error: "Cupom esgotado." }
+  if (voucher.one_per_user && userId) {
+    const q = query(
+      collection(getDb(), COLLECTIONS.VOUCHER_USAGES),
+      where("voucher_id", "==", voucher.id),
+      where("user_id", "==", userId)
+    )
+    const snap = await getDocs(q)
+    if (!snap.empty) return { valid: false, error: "Você já utilizou este cupom." }
+  }
+  return { valid: true, voucher }
+}
+
+export async function useVoucher(voucherId: string, userId: string, bookingId: string): Promise<void> {
+  const v = await getVoucher(voucherId)
+  if (!v) throw new Error("Cupom não encontrado.")
+  if (v.used_count >= v.max_uses) throw new Error("Cupom esgotado.")
+  const ref = doc(getDb(), COLLECTIONS.VOUCHERS, voucherId)
+  await updateDoc(ref, { used_count: v.used_count + 1 })
+  if (v.one_per_user) {
+    const now = Timestamp.now()
+    await addDoc(collection(getDb(), COLLECTIONS.VOUCHER_USAGES), {
+      voucher_id: voucherId,
+      user_id: userId,
+      booking_id: bookingId,
+      used_at: now,
+    })
+  }
+}
+
+export async function releaseVoucherUsage(bookingId: string): Promise<void> {
+  const booking = await getBooking(bookingId)
+  if (!booking?.voucher_id) return
+  const voucherId = booking.voucher_id
+  const v = await getVoucher(voucherId)
+  if (!v) return
+  const usageQ = query(
+    collection(getDb(), COLLECTIONS.VOUCHER_USAGES),
+    where("booking_id", "==", bookingId)
+  )
+  const snap = await getDocs(usageQ)
+  if (!snap.empty) {
+    for (const d of snap.docs) {
+      await deleteDoc(doc(getDb(), COLLECTIONS.VOUCHER_USAGES, d.id))
+    }
+  }
+  const ref = doc(getDb(), COLLECTIONS.VOUCHERS, voucherId)
+  const newCount = Math.max(0, v.used_count - 1)
+  await updateDoc(ref, { used_count: newCount })
+}
+
+// -----------------------------
+// Activity Log (histórico admin)
+// -----------------------------
+
+export async function logActivity(
+  type: ActivityLogType,
+  actorId: string,
+  actorDisplay: string,
+  payload: ActivityLogPayload
+): Promise<void> {
+  const now = Timestamp.now()
+  const data: DocumentData = {
+    type,
+    actor_id: actorId,
+    actor_display: actorDisplay,
+    created_at: now,
+    payload,
+  }
+  await addDoc(collection(getDb(), COLLECTIONS.ACTIVITY_LOG), data)
+}
+
+export async function getActivityLog(limitCount?: number): Promise<ActivityLog[]> {
+  const coll = collection(getDb(), COLLECTIONS.ACTIVITY_LOG)
+  const q = limitCount
+    ? query(coll, orderBy("created_at", "desc"), limit(limitCount))
+    : query(coll, orderBy("created_at", "desc"))
+  const snap = await getDocs(q)
+  return snap.docs.map((d) => serializeActivityLog(d.data(), d.id))
 }
 
 export { COLLECTIONS }

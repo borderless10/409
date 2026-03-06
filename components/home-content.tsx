@@ -9,10 +9,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { MapPin, Search } from "lucide-react"
+import { MapPin, Search, List } from "lucide-react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-import { SiteHeader } from "@/components/site-header"
+import { MainSidebar } from "@/components/main-sidebar"
 import { formatAmperageRange, formatPowerRange } from "@/lib/utils"
 
 const StationMap = dynamic(() => import("@/components/station-map"), {
@@ -73,8 +73,8 @@ export default function HomeContent() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader variant="home" user={user} />
+    <div className="flex min-h-screen bg-background">
+      <MainSidebar />
       <main className="flex-1 container mx-auto max-w-7xl px-4 py-6">
         <div className="mb-6 space-y-2">
           <h2 className="text-3xl font-bold">Encontre Estações de Recarga</h2>
@@ -111,6 +111,7 @@ export default function HomeContent() {
             size="sm"
             className={viewMode === "list" ? "bg-primary text-primary-foreground" : "bg-transparent"}
           >
+            <List className="mr-2 h-4 w-4" />
             Lista
           </Button>
         </div>

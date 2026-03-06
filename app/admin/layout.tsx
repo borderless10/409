@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { getCurrentUser, isAuthReady } from "@/lib/auth-firebase"
-import { SiteHeader } from "@/components/site-header"
+import { AppShell } from "@/components/app-shell"
 
 export default function AdminLayout({
   children,
@@ -51,12 +51,5 @@ export default function AdminLayout({
 
   if (!allowed) return null
 
-  return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader variant="admin" title="EV Charge Admin" logoHref="/admin" />
-      <main className="flex-1 container mx-auto px-4 py-6">
-        {children}
-      </main>
-    </div>
-  )
+  return <AppShell>{children}</AppShell>
 }

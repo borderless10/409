@@ -88,6 +88,7 @@ export interface Booking {
 
   payment_status: "pending" | "paid" | "failed"
   created_at: string
+  voucher_id?: string
 }
 
 /* =========================
@@ -118,4 +119,68 @@ export interface Payment {
   payment_method: string
   created_at: string
   refund_of_id?: string
+  voucher_id?: string
+}
+
+/* =========================
+   ACTIVITY LOG (histórico admin)
+========================= */
+export type ActivityLogType = "booking_created" | "booking_cancelled" | "payment_completed"
+
+export interface ActivityLogPayloadBooking {
+  booking_id: string
+  user_id: string
+  station_id: string
+  charger_id: string
+  start_time?: string
+  end_time?: string
+  reason?: string
+}
+
+export interface ActivityLogPayloadPayment {
+  payment_id: string
+  booking_id: string
+  user_id: string
+  amount: number
+  station_id: string
+  charger_id: string
+}
+
+export type ActivityLogPayload = ActivityLogPayloadBooking | ActivityLogPayloadPayment
+
+export interface ActivityLog {
+  id: string
+  type: ActivityLogType
+  actor_id: string
+  actor_display: string
+  created_at: string
+  payload: ActivityLogPayload
+}
+
+/* =========================
+   VOUCHER / COUPON
+========================= */
+export type VoucherDiscountType = "percent" | "fixed"
+
+export interface Voucher {
+  id: string
+  code: string
+  name: string
+  discount_type: VoucherDiscountType
+  discount_value: number
+  max_uses: number
+  used_count: number
+  one_per_user: boolean
+  active_from?: string
+  active_until?: string
+  created_at: string
+  created_by: string
+}
+
+export interface VoucherUsage {
+  id: string
+  voucher_id: string
+  user_id: string
+  booking_id: string
+  used_at: string
 }

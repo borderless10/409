@@ -54,5 +54,29 @@ service cloud.firestore {
       allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
       allow update, delete: if isAdmin();
     }
+
+    // Histórico: apenas admins leem; qualquer autenticado pode criar (ao criar/cancelar reserva ou pagar).
+    match /activityLog/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    // Cupons: admins criam e editam; clientes leem (validar/aplicar) e podem atualizar apenas used_count (usar/devolver).
+    match /vouchers/{voucherId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin();
+      allow update: if isAdmin()
+        || (isAuthenticated() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used_count']));
+      allow delete: if isAdmin();
+    }
+
+    // Uso de cupom (um por pessoa): cliente cria ao usar e deleta ao cancelar reserva (devolver).
+    match /voucherUsages/{usageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.user_id == request.auth.uid;
+      allow update: if false;
+      allow delete: if isAuthenticated() && resource.data.user_id == request.auth.uid;
+    }
   }
 }

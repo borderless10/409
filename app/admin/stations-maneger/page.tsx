@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import {
   getStationsWithCounts,
@@ -70,6 +70,10 @@ export default function AdminStationsPage() {
   const [deletePassword, setDeletePassword] = useState("")
   const [deleteError, setDeleteError] = useState("")
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+
+  const [resPeriodType, setResPeriodType] = useState<"total" | "year" | "month">("total")
+  const [resSelectedYear, setResSelectedYear] = useState<number | undefined>()
+  const [resSelectedMonth, setResSelectedMonth] = useState<number | undefined>()
 
   const [editingChargerId, setEditingChargerId] = useState<string | null>(null)
   const [editChargerSubmitting, setEditChargerSubmitting] = useState(false)
@@ -236,6 +240,66 @@ export default function AdminStationsPage() {
       setAddChargerSubmitting(false)
     }
   }
+
+  const stationBookings = useMemo(() => {
+    if (!selectedStation) return []
+    return bookings
+      .filter((b) => b.station_id === selectedStation.id)
+      .sort((a, b) => {
+        const da = new Date(a.start_time).getTime()
+        const db = new Date(b.start_time).getTime()
+        if (Number.isNaN(da) && Number.isNaN(db)) return 0
+        if (Number.isNaN(da)) return 1
+        if (Number.isNaN(db)) return -1
+        return db - da
+      })
+  }, [bookings, selectedStation])
+
+  const resAvailableYears = useMemo(() => {
+    const years = new Set<number>()
+    for (const b of stationBookings) {
+      const d = new Date(b.start_time)
+      if (!Number.isNaN(d.getTime())) years.add(d.getFullYear())
+    }
+    return Array.from(years).sort((a, b) => b - a)
+  }, [stationBookings])
+
+  const resAvailableMonthsByYear = useMemo(() => {
+    const map: Record<number, number[]> = {}
+    for (const b of stationBookings) {
+      const d = new Date(b.start_time)
+      if (Number.isNaN(d.getTime())) continue
+      const y = d.getFullYear()
+      if (!map[y]) map[y] = []
+      if (!map[y].includes(d.getMonth())) map[y].push(d.getMonth())
+    }
+    for (const y of Object.keys(map)) {
+      map[Number(y)].sort((a, b) => a - b)
+    }
+    return map
+  }, [stationBookings])
+
+  const filteredStationBookings = useMemo(() => {
+    return stationBookings.filter((b) => {
+      const d = new Date(b.start_time)
+      if (Number.isNaN(d.getTime())) return false
+      if (resPeriodType === "total") return true
+      if (resSelectedYear == null) return false
+      if (d.getFullYear() !== resSelectedYear) return false
+      if (resPeriodType === "year") return true
+      if (resSelectedMonth == null) return false
+      return d.getMonth() === resSelectedMonth
+    })
+  }, [stationBookings, resPeriodType, resSelectedYear, resSelectedMonth])
+
+  const resCounters = useMemo(() => {
+    const total = filteredStationBookings.length
+    const active = filteredStationBookings.filter((b) => b.status === "active").length
+    const completed = filteredStationBookings.filter((b) => b.status === "completed").length
+    const cancelled = filteredStationBookings.filter((b) => b.status === "cancelled").length
+    const pending = filteredStationBookings.filter((b) => b.status === "pending").length
+    return { total, active, completed, cancelled, pending }
+  }, [filteredStationBookings])
 
   if (loading) {
     return (
@@ -405,7 +469,7 @@ export default function AdminStationsPage() {
                   <TabsList>
                     <TabsTrigger value="overview">Visão Geral</TabsTrigger>
                     <TabsTrigger value="chargers">Carregadores</TabsTrigger>
-                    <TabsTrigger value="events">Eventos</TabsTrigger>
+                    <TabsTrigger value="reservations">Reservas</TabsTrigger>
                     <TabsTrigger value="transactions">Transações</TabsTrigger>
                   </TabsList>
 
@@ -773,10 +837,191 @@ export default function AdminStationsPage() {
                     )}
                   </TabsContent>
 
-                  <TabsContent value="events">
-                    <p className="text-sm text-muted-foreground">
-                      Eventos da estação (em breve)
-                    </p>
+                  <TabsContent value="reservations" className="space-y-4">
+                    {/* Filtros de período */}
+                    <div className="flex flex-wrap gap-3 items-center">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">Período:</span>
+                        <div className="inline-flex rounded-md border bg-muted/50 p-1 text-xs">
+                          <button
+                            type="button"
+                            className={`px-3 py-1 rounded ${resPeriodType === "total" ? "bg-background font-semibold shadow-sm" : "text-muted-foreground"}`}
+                            onClick={() => setResPeriodType("total")}
+                          >
+                            Total
+                          </button>
+                          <button
+                            type="button"
+                            className={`px-3 py-1 rounded ${resPeriodType === "year" ? "bg-background font-semibold shadow-sm" : "text-muted-foreground"}`}
+                            onClick={() => {
+                              setResPeriodType("year")
+                              if (resSelectedYear == null && resAvailableYears.length > 0) {
+                                setResSelectedYear(resAvailableYears[0])
+                              }
+                            }}
+                          >
+                            Ano
+                          </button>
+                          <button
+                            type="button"
+                            className={`px-3 py-1 rounded ${resPeriodType === "month" ? "bg-background font-semibold shadow-sm" : "text-muted-foreground"}`}
+                            onClick={() => {
+                              setResPeriodType("month")
+                              const year = resSelectedYear ?? resAvailableYears[0]
+                              if (year != null) {
+                                setResSelectedYear(year)
+                                const months = resAvailableMonthsByYear[year]
+                                if (resSelectedMonth == null && months && months.length > 0) {
+                                  setResSelectedMonth(months[0])
+                                }
+                              }
+                            }}
+                          >
+                            Mês
+                          </button>
+                        </div>
+                      </div>
+
+                      {resAvailableYears.length > 0 && resPeriodType !== "total" && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Ano</span>
+                          <select
+                            className="h-8 rounded-md border bg-background px-2 text-xs"
+                            value={resSelectedYear ?? ""}
+                            onChange={(e) => {
+                              const year = Number(e.target.value)
+                              setResSelectedYear(Number.isNaN(year) ? undefined : year)
+                              const months = resAvailableMonthsByYear[year]
+                              if (months && months.length > 0) {
+                                setResSelectedMonth(months[0])
+                              } else {
+                                setResSelectedMonth(undefined)
+                              }
+                            }}
+                          >
+                            {resAvailableYears.map((y) => (
+                              <option key={y} value={y}>{y}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {resPeriodType === "month" && resSelectedYear != null && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Mês</span>
+                          <select
+                            className="h-8 rounded-md border bg-background px-2 text-xs"
+                            value={resSelectedMonth ?? ""}
+                            onChange={(e) => {
+                              const m = Number(e.target.value)
+                              setResSelectedMonth(Number.isNaN(m) ? undefined : m)
+                            }}
+                          >
+                            {(resAvailableMonthsByYear[resSelectedYear] ?? []).map((m) => {
+                              const d = new Date(resSelectedYear, m, 1)
+                              const label = d.toLocaleDateString("pt-BR", { month: "long" })
+                              return (
+                                <option key={m} value={m}>
+                                  {label.charAt(0).toUpperCase() + label.slice(1)}
+                                </option>
+                              )
+                            })}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Contadores */}
+                    <div className="flex flex-wrap gap-3">
+                      <Badge variant="outline">{resCounters.total} reserva(s)</Badge>
+                      <Badge variant="default">{resCounters.active} ativa(s)</Badge>
+                      <Badge variant="secondary">{resCounters.completed} concluída(s)</Badge>
+                      <Badge variant="secondary">{resCounters.pending} pendente(s)</Badge>
+                      <Badge variant="destructive">{resCounters.cancelled} cancelada(s)</Badge>
+                    </div>
+
+                    {/* Tabela */}
+                    {filteredStationBookings.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma reserva encontrada para o período selecionado.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead className="border-b">
+                            <tr>
+                              <th className="py-2 pr-4 text-left font-medium">Início</th>
+                              <th className="py-2 pr-4 text-left font-medium">Fim</th>
+                              <th className="py-2 pr-4 text-left font-medium">Carregador</th>
+                              <th className="py-2 pr-4 text-left font-medium">Status</th>
+                              <th className="py-2 pr-4 text-left font-medium">Pagamento</th>
+                              <th className="py-2 pl-4 text-right font-medium">Valor</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredStationBookings.map((b) => {
+                              const start = new Date(b.start_time)
+                              const end = new Date(b.end_time)
+                              const validStart = !Number.isNaN(start.getTime())
+                              const validEnd = !Number.isNaN(end.getTime())
+                              const charger = chargers.find((c) => c.id === b.charger_id)
+                              const chargerLabel = charger ? `#${charger.charger_number}` : b.charger_id.slice(0, 6)
+
+                              const statusMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+                                active: { label: "Ativa", variant: "default" },
+                                completed: { label: "Concluída", variant: "secondary" },
+                                pending: { label: "Pendente", variant: "outline" },
+                                cancelled: { label: "Cancelada", variant: "destructive" },
+                              }
+                              const paymentMap: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+                                paid: { label: "Pago", variant: "default" },
+                                pending: { label: "Pendente", variant: "outline" },
+                                failed: { label: "Falhou", variant: "destructive" },
+                              }
+
+                              const st = statusMap[b.status] ?? { label: b.status, variant: "outline" as const }
+                              const pm = paymentMap[b.payment_status] ?? { label: b.payment_status, variant: "outline" as const }
+
+                              return (
+                                <tr
+                                  key={b.id}
+                                  className="border-b last:border-none hover:bg-muted/30 transition-colors"
+                                >
+                                  <td className="py-2 pr-4 align-top whitespace-nowrap">
+                                    {validStart
+                                      ? `${start.toLocaleDateString("pt-BR")} ${start.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                                      : "—"}
+                                  </td>
+                                  <td className="py-2 pr-4 align-top whitespace-nowrap">
+                                    {validEnd
+                                      ? `${end.toLocaleDateString("pt-BR")} ${end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+                                      : "—"}
+                                  </td>
+                                  <td className="py-2 pr-4 align-top font-mono text-xs">
+                                    {chargerLabel}
+                                  </td>
+                                  <td className="py-2 pr-4 align-top">
+                                    <Badge variant={st.variant}>{st.label}</Badge>
+                                  </td>
+                                  <td className="py-2 pr-4 align-top">
+                                    <Badge variant={pm.variant}>{pm.label}</Badge>
+                                  </td>
+                                  <td className="py-2 pl-4 align-top text-right font-medium">
+                                    {typeof b.total_cost === "number"
+                                      ? b.total_cost.toLocaleString("pt-BR", {
+                                          style: "currency",
+                                          currency: "BRL",
+                                          minimumFractionDigits: 2,
+                                        })
+                                      : "—"}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </TabsContent>
 
                   <TabsContent value="transactions">

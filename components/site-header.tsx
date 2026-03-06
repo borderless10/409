@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Zap, User, LogOut, ArrowLeft } from "lucide-react"
+import { Zap, LogOut, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { logout } from "@/lib/auth-firebase"
@@ -76,33 +76,6 @@ export function SiteHeader({
         </div>
 
         <div className="flex items-center gap-2">
-          {variant === "home" && user && (
-            <>
-              {user.role === "admin" && (
-                <>
-                  <Button variant="header" size="sm" asChild>
-                    <Link href="/admin">Admin</Link>
-                  </Button>
-                  <Button variant="header" size="sm" asChild>
-                    <Link href="/admin/expenses">Financeiro</Link>
-                  </Button>
-                  <Button variant="header" size="sm" asChild>
-                    <Link href="/admin/stations-maneger">Estações</Link>
-                  </Button>
-                </>
-              )}
-              <Button variant="header" size="sm" asChild>
-                <Link href="/bookings">
-                  <User className="mr-2 h-4 w-4" />
-                  Minhas Reservas
-                </Link>
-              </Button>
-              <Button variant="header" size="sm" onClick={handleLogout}>
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-
           {variant === "admin" && (
             <>
               <Button variant="header" size="sm" asChild>

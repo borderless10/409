@@ -3,8 +3,9 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { getBooking, getStation, updateBooking, createPayment, updateCharger } from "@/lib/firestore"
-import type { Booking, Station } from "@/lib/types"
+import { getBooking, getStation, updateBooking, createPayment, updateCharger, logActivity, validateVoucher, useVoucher } from "@/lib/firestore"
+import { getCurrentUserAsync } from "@/lib/auth-firebase"
+import type { Booking, Station, Voucher } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -28,6 +29,10 @@ export default function PaymentPage() {
   const [cardName, setCardName] = useState("")
   const [cardExpiry, setCardExpiry] = useState("")
   const [cardCvv, setCardCvv] = useState("")
+  const [voucherCode, setVoucherCode] = useState("")
+  const [appliedVoucher, setAppliedVoucher] = useState<Voucher | null>(null)
+  const [voucherError, setVoucherError] = useState("")
+  const [applyingVoucher, setApplyingVoucher] = useState(false)
 
   useEffect(() => {
     if (!bookingId) {
@@ -44,6 +49,28 @@ export default function PaymentPage() {
     })
   }, [bookingId])
 
+  const handleApplyVoucher = async () => {
+    const code = voucherCode.trim()
+    if (!code) return
+    setVoucherError("")
+    setApplyingVoucher(true)
+    try {
+      const user = await getCurrentUserAsync()
+      const result = await validateVoucher(code, user?.id)
+      if (result.valid) {
+        setAppliedVoucher(result.voucher)
+      } else {
+        setVoucherError(result.error)
+        setAppliedVoucher(null)
+      }
+    } catch {
+      setVoucherError("Erro ao validar cupom.")
+      setAppliedVoucher(null)
+    } finally {
+      setApplyingVoucher(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -54,7 +81,13 @@ export default function PaymentPage() {
     try {
       const duration = (new Date(booking.end_time).getTime() - new Date(booking.start_time).getTime()) / (1000 * 60 * 60)
       const estimatedKwh = duration * 40
-      const cost = estimatedKwh * (station?.price_per_kwh ?? 0.89)
+      const subtotal = estimatedKwh * (station?.price_per_kwh ?? 0.89)
+      const discount = appliedVoucher
+        ? appliedVoucher.discount_type === "percent"
+          ? subtotal * (appliedVoucher.discount_value / 100)
+          : Math.min(appliedVoucher.discount_value, subtotal)
+        : 0
+      const cost = Math.max(0, subtotal - discount)
 
       const updatedBooking: Booking = {
         ...booking,
@@ -62,16 +95,34 @@ export default function PaymentPage() {
         payment_status: "paid",
         total_kwh: estimatedKwh,
         total_cost: cost,
+        ...(appliedVoucher && { voucher_id: appliedVoucher.id }),
       }
 
       await updateBooking(updatedBooking)
-      await createPayment({
+      const payment = await createPayment({
         booking_id: booking.id,
         user_id: booking.user_id,
         amount: cost,
         status: "completed",
         payment_method: "card",
+        ...(appliedVoucher && { voucher_id: appliedVoucher.id }),
       })
+
+      if (appliedVoucher) {
+        await useVoucher(appliedVoucher.id, booking.user_id, booking.id)
+      }
+
+      const actor = await getCurrentUserAsync()
+      if (actor) {
+        await logActivity("payment_completed", actor.id, actor.name || actor.email || actor.id, {
+          payment_id: payment.id,
+          booking_id: booking.id,
+          user_id: booking.user_id,
+          amount: cost,
+          station_id: booking.station_id,
+          charger_id: booking.charger_id,
+        })
+      }
 
       setPaymentSuccess(true)
       setTimeout(() => router.push("/bookings"), 3000)
@@ -90,6 +141,15 @@ export default function PaymentPage() {
         status: "available",
         current_session_id: null as unknown as string,
       })
+      const actor = await getCurrentUserAsync()
+      if (actor) {
+        await logActivity("booking_cancelled", actor.id, actor.name || actor.email || actor.id, {
+          booking_id: booking.id,
+          user_id: booking.user_id,
+          station_id: booking.station_id,
+          charger_id: booking.charger_id,
+        })
+      }
       router.replace("/bookings")
     } catch {
       setCancelling(false)
@@ -141,7 +201,13 @@ export default function PaymentPage() {
 
   const duration = (new Date(booking.end_time).getTime() - new Date(booking.start_time).getTime()) / (1000 * 60 * 60)
   const estimatedKwh = duration * 40
-  const totalAmount = estimatedKwh * station.price_per_kwh
+  const subtotal = estimatedKwh * station.price_per_kwh
+  const discount = appliedVoucher
+    ? appliedVoucher.discount_type === "percent"
+      ? subtotal * (appliedVoucher.discount_value / 100)
+      : Math.min(appliedVoucher.discount_value, subtotal)
+    : 0
+  const totalAmount = Math.max(0, subtotal - discount)
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -202,7 +268,19 @@ export default function PaymentPage() {
                     </div>
                   </div>
                 </div>
-                <div className="border-t pt-3">
+                <div className="border-t pt-3 space-y-2">
+                  {appliedVoucher && (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span>Subtotal</span>
+                        <span>R$ {subtotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Desconto ({appliedVoucher.name})</span>
+                        <span>- R$ {discount.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-semibold">Total</span>
                     <span className="text-2xl font-bold text-primary">R$ {totalAmount.toFixed(2)}</span>
@@ -226,6 +304,41 @@ export default function PaymentPage() {
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="flex gap-2">
+                    <div className="flex-1 space-y-2">
+                      <Label htmlFor="voucherCode">Cupom de desconto</Label>
+                      <Input
+                        id="voucherCode"
+                        placeholder="Código do cupom"
+                        value={voucherCode}
+                        onChange={(e) => {
+                          setVoucherCode(e.target.value.toUpperCase())
+                          setVoucherError("")
+                        }}
+                        disabled={!!appliedVoucher}
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleApplyVoucher}
+                        disabled={applyingVoucher || !voucherCode.trim() || !!appliedVoucher}
+                      >
+                        {applyingVoucher ? "..." : appliedVoucher ? "Aplicado" : "Aplicar"}
+                      </Button>
+                    </div>
+                  </div>
+                  {voucherError && <p className="text-sm text-destructive">{voucherError}</p>}
+                  {appliedVoucher && (
+                    <p className="text-sm text-green-600">
+                      Cupom &quot;{appliedVoucher.name}&quot; aplicado.
+                      {appliedVoucher.discount_type === "percent"
+                        ? ` ${appliedVoucher.discount_value}% de desconto`
+                        : ` R$ ${appliedVoucher.discount_value.toFixed(2)} de desconto`}
+                    </p>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="cardNumber">Número do Cartão</Label>
                     <Input
@@ -285,7 +398,7 @@ export default function PaymentPage() {
                   </div>
 
                   <div className="bg-muted rounded-lg p-4 flex items-start gap-2">
-                    <Lock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <Lock className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                     <p className="text-xs text-muted-foreground">
                       Este é um pagamento simulado para demonstração. Nenhuma cobrança real será efetuada.
                     </p>

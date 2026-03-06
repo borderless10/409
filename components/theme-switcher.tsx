@@ -15,7 +15,7 @@ export function ThemeSwitcher() {
 
   if (!mounted) {
     return (
-      <div className="flex gap-1 rounded-md border border-primary-foreground/30 bg-primary-foreground/10 p-1">
+      <div className="flex gap-1 rounded-md border border-border bg-muted p-1">
         <div className="h-7 w-7 rounded" />
       </div>
     )
@@ -23,7 +23,7 @@ export function ThemeSwitcher() {
 
   return (
     <div
-      className="flex gap-0.5 rounded-md border border-primary-foreground/30 bg-primary-foreground/10 p-0.5"
+      className="flex gap-0.5 rounded-md border border-border bg-muted/70 p-0.5 text-foreground"
       role="group"
       aria-label="Selecionar tema"
     >
@@ -31,8 +31,8 @@ export function ThemeSwitcher() {
         type="button"
         variant="ghost"
         size="icon-sm"
-        className={`h-7 w-7 rounded text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground ${
-          (theme ?? "system") === "light" ? "bg-primary-foreground/25" : ""
+        className={`h-7 w-7 rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground ${
+          (theme ?? "system") === "light" ? "bg-foreground text-background shadow-sm" : ""
         }`}
         onClick={() => setTheme("light")}
         title="Tema claro"
@@ -44,8 +44,8 @@ export function ThemeSwitcher() {
         type="button"
         variant="ghost"
         size="icon-sm"
-        className={`h-7 w-7 rounded text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground ${
-          (theme ?? "system") === "dark" ? "bg-primary-foreground/25" : ""
+        className={`h-7 w-7 rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground ${
+          (theme ?? "system") === "dark" ? "bg-foreground text-background shadow-sm" : ""
         }`}
         onClick={() => setTheme("dark")}
         title="Tema escuro"
@@ -57,8 +57,8 @@ export function ThemeSwitcher() {
         type="button"
         variant="ghost"
         size="icon-sm"
-        className={`h-7 w-7 rounded text-primary-foreground hover:bg-primary-foreground/20 hover:text-primary-foreground ${
-          (theme ?? "system") === "system" ? "bg-primary-foreground/25" : ""
+        className={`h-7 w-7 rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground ${
+          (theme ?? "system") === "system" ? "bg-foreground text-background shadow-sm" : ""
         }`}
         onClick={() => setTheme("system")}
         title="Seguir dispositivo"

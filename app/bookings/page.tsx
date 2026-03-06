@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { getUserBookings, getStation, getCharger, updateBooking, updateCharger } from "@/lib/firestore"
+import { getUserBookings, getStation, getCharger, updateBooking, updateCharger, logActivity, releaseVoucherUsage } from "@/lib/firestore"
 import { auth } from "@/lib/firebase"
+import { getCurrentUserAsync } from "@/lib/auth-firebase"
 import { onAuthStateChanged } from "firebase/auth"
 import type { Booking, Station, Charger } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Calendar, MapPin, Clock, DollarSign } from "lucide-react"
 import Link from "next/link"
-import { SiteHeader } from "@/components/site-header"
+import { MainSidebar } from "@/components/main-sidebar"
 
 export default function MyBookings() {
   const router = useRouter()
@@ -74,12 +75,24 @@ export default function MyBookings() {
     if (typeof window !== "undefined" && !window.confirm("Deseja mesmo cancelar esta reserva?")) return
     setCancellingId(booking.id)
     try {
+      if (booking.payment_status === "paid" && booking.voucher_id) {
+        await releaseVoucherUsage(booking.id)
+      }
       const updated: Booking = { ...booking, status: "cancelled" }
       await updateBooking(updated)
       await updateCharger(booking.charger_id, {
         status: "available",
         current_session_id: null as unknown as string,
       })
+      const actor = await getCurrentUserAsync()
+      if (actor) {
+        await logActivity("booking_cancelled", actor.id, actor.name || actor.email || actor.id, {
+          booking_id: booking.id,
+          user_id: booking.user_id,
+          station_id: booking.station_id,
+          charger_id: booking.charger_id,
+        })
+      }
       setBookings((prev) => prev.map((b) => (b.id === booking.id ? updated : b)))
     } finally {
       setCancellingId(null)
@@ -121,8 +134,8 @@ export default function MyBookings() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <SiteHeader variant="back" backHref="/" backReplace />
+    <div className="flex min-h-screen bg-background">
+      <MainSidebar />
       <main className="flex-1 container mx-auto max-w-5xl px-4 py-6">
         <div className="mb-8">
           <h1 className="text-3xl font-bold">Minhas Reservas</h1>

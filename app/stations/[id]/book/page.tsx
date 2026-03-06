@@ -3,7 +3,7 @@
 import type React from "react"
 import { useEffect, useState } from "react"
 import { useRouter, useParams } from "next/navigation"
-import { getStationWithCounts, getStationChargers, getBookingsByCharger, createBooking } from "@/lib/firestore"
+import { getStationWithCounts, getStationChargers, getBookingsByCharger, createBooking, logActivity } from "@/lib/firestore"
 import { getCurrentUserAsync } from "@/lib/auth-firebase"
 import type { Station, Charger } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -126,6 +126,14 @@ export default function BookStation() {
         end_time: endTime.toISOString(),
         status: "pending",
         payment_status: "pending",
+      })
+      await logActivity("booking_created", user.id, user.name || user.email || user.id, {
+        booking_id: booking.id,
+        user_id: user.id,
+        station_id: station.id,
+        charger_id: selectedChargerId,
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
       })
       router.push(`/bookings/${booking.id}/payment`)
     } catch (err) {
